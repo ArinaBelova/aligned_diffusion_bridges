@@ -58,6 +58,6 @@ transform: null
 use_drift_in_doobs: false
 use_grad_noise: false
 val_bs: 1
-wandb_entity: vsomnath
+wandb_entity: null
 wandb_mode: online
 weight_decay: 0.01
