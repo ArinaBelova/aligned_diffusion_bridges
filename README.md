@@ -62,7 +62,7 @@ The file with PDB IDs of ligand-free and ligand-bound structures can be download
 Rename this file to `d3pm.xlsx` and place under `data/raw/d3pm`.
 
 The structures corresponding to PDB IDs can be downloaded by following the instructions on the [here](https://www.rcsb.org/downloads).
-For this task, we downloaded the `.cif` files, which were saved to `data/raw/d3pm/conformations`
+For this task, we downloaded the `.cif` files, which were saved to `data/raw/d3pm/conformations`.
 
 ##### Dataset Preparation
 
@@ -76,7 +76,7 @@ The dataset can then be preprocessed by running the following command:
 python scripts/conf/preprocess.py --center_conformations --resolution c_alpha
 ```
 
-The raw and processed D3PM datasets can be found at [zenodo](https://zenodo.org/record/8066711)
+The raw and processed D3PM datasets can be found at [zenodo](https://zenodo.org/record/8066711).
 
 #### Training & Evaluation
 
@@ -112,7 +112,7 @@ For this task, we use the `DB5.5` dataset, (`data/raw/db5` and `data/processed/d
 
 ##### Downloading structures
 
-The structures can be downloaded following the links listed on the [EquiDock repo](https://github.com/octavian-ganea/equidock_public)
+The structures can be downloaded following the links listed on the [EquiDock repo](https://github.com/octavian-ganea/equidock_public).
 The complex structures are stored under `data/raw/db5/complexes` and the train/valid/test splits are gathered into `data/raw/db5/splits.json`.
 
 ##### Dataset Preparation
@@ -122,7 +122,7 @@ The dataset can then be preprocessed by running the following command:
 python scripts/docking/preprocess.py --resolution c_alpha
 ```
 
-The raw and processed DB5.5 datasets can be found at [zenodo](https://zenodo.org/record/8066711)
+The raw and processed DB5.5 datasets can be found at [zenodo](https://zenodo.org/record/8066711).
 
 #### Training
 
