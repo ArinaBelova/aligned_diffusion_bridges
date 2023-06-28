@@ -134,7 +134,7 @@ python scripts/docking/train.py --config ${PATH_TO_CONFIG}.yml
 
 ## License
 
-This project is licensed under the MIT-License. Please see [LICENSE.md](https://github.com/IBM/aligned_diffusion_bridges/blob/main/LICENSE.md) for more details.
+This project is licensed under the MIT-License. Please see [LICENSE.md](https://github.com/IBM/aligned_diffusion_bridges/blob/main/LICENSE) for more details.
 
 ## Reference
 
