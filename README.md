@@ -4,7 +4,7 @@
 
 This is the official [PyTorch](https://pytorch.org/) implementation for _SBAlign_ ([Somnath et al. 2023](https://openreview.net/forum?id=BkWFJN7_bQ))
 
-![sbalign-overview](./assets/sbalign_overview.pdf)
+![sbalign-overview](./assets/sbalign_overview.png)
 
 ## Installation
 
