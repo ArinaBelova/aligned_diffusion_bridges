@@ -143,11 +143,13 @@ This project is licensed under the MIT-License. Please see [LICENSE.md](https://
 If you find our code useful, please cite our paper:
 
 ```
-@article{somnath2023aligned,
-  title={Aligned Diffusion Schr$\backslash$" odinger Bridges},
-  author={Somnath, Vignesh Ram and Pariset, Matteo and Hsieh, Ya-Ping and Martinez, Maria Rodriguez and Krause, Andreas and Bunne, Charlotte},
-  journal={arXiv preprint arXiv:2302.11419},
-  year={2023}
+@inproceedings{
+somnath2023aligned,
+title={Aligned Diffusion Schr\"odinger Bridges},
+author={Vignesh Ram Somnath and Matteo Pariset and Ya-Ping Hsieh and Maria Rodriguez Martinez and Andreas Krause and Charlotte Bunne},
+booktitle={The 39th Conference on Uncertainty in Artificial Intelligence},
+year={2023},
+url={https://openreview.net/forum?id=BkWFJN7_bQ}
 }
 ```
 ## Contact
