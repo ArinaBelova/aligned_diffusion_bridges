@@ -2,7 +2,7 @@
 
 (Under Construction and Subject to Change)
 
-This is the official [PyTorch](https://pytorch.org/) implementation for _SBAlign_ ([Somnath et al. 2023](https://openreview.net/forum?id=BkWFJN7_bQ))
+This is the official [PyTorch](https://pytorch.org/) implementation for **SBAlign** ([Somnath et al. 2023](https://openreview.net/forum?id=BkWFJN7_bQ))
 
 ![sbalign-overview](./assets/sbalign_overview.png)
 
@@ -45,7 +45,7 @@ To sample trajectories, call:
 
 Additional remarks:
 
-- Trajectories sampled from (i) the baseline, (ii) SBalign and (iii) the baseline + drift (from SBalign) are stored in `cells/results/`.
+- Trajectories sampled from (i) the baseline, (ii) **SBAlign** and (iii) the baseline + drift (from **SBAlign**) are stored in `cells/results/`.
 - Wasserstein distances between end distributions can be computed with `cells/wasserstein_metric.ipynb`.
 
 ### C. Protein Conformational Changes
@@ -105,6 +105,10 @@ python scripts/conf/evaluate.py --data_dir data --log_dir reproducibility --run_
 ### D. Rigid-Protein Docking
 
 In this task, we are interested in learning a stochastic process that best orients the ligand protein relative to the receptor protein.
+
+**Note**: In rigid-protein docking, **SBAlign** is limited to using a fixed rotation and translation and learning a stochastic process to undo that. While we provide the code from the original version for the docking experiment, this experiment does not highlight the strengths of **SBAlign**. One is better off using [**DiffDock-PP**](https://github.com/ketatam/DiffDock-PP) for this task. 
+
+Instead, **SBAlign** is more suited to modeling conformational changes in proteins, which is explored in Section C, above.
 
 #### Datasets
 
