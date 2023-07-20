@@ -54,7 +54,7 @@ timestep_emb_dim: 32
 timestep_embed_dim: 32
 timestep_embed_type: sinusoidal
 train_bs: 2
-transform: null
+transform: brownian_bridge
 use_drift_in_doobs: false
 use_grad_noise: false
 val_bs: 1
