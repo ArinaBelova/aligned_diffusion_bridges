@@ -2,6 +2,7 @@ __author__ = "Matteo Pariset"
 
 import sys
 import os
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
@@ -60,6 +61,7 @@ def load_model(filename, args):
         activation=args.activation, 
         dropout_p=args.dropout_p, use_drift_in_doobs=args.use_drift_in_doobs)
 
+    print(DEVICE)
     model.to(DEVICE)
 
     model.load_state_dict(torch.load(filename))
@@ -91,13 +93,14 @@ class AlignExperiment:
 
         model = train.main(list_args)
 
-        g = get_diffusivity_schedule(config.diffusivity_schedule, config.max_diffusivity)
+        dif = get_diffusivity_schedule(config.diffusivity_schedule, config.max_diffusivity)
+        
 
         # Default save
         time_tag = datetime.datetime.today().strftime('%Y_%m_%d-%H_%M_%S')
 
         # TODO: Debug. Re-enable auto saving
-        return AlignExperiment(config, model, g) #.save(time_tag)
+        return AlignExperiment(config, model, dif) #.save(time_tag)
         
 
     def save(self, tag):
@@ -327,6 +330,9 @@ def in_experiment_dir(experiment_name, *args):
     return os.path.join(f"../reproducibility/{experiment_name}/", *args)
 
 def export_fig(fig_name, force=False, extension="pdf"):
-    fig_path = f"../figures/{fig_name}.{extension}"
+    fig_path = Path(f"../figures/{fig_name}.{extension}")
+    
+    os.makedirs(fig_path.parent, exist_ok = True)
+    
     if not os.path.exists(fig_path) or force:
         plt.savefig(fig_path, bbox_inches="tight")

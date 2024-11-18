@@ -37,7 +37,7 @@ def build_data(problem_name, n_samples, device):
 
 def build_data_loader(args):
     if args.transform is None:
-        transform = BrownianBridgeTransform(g=get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity))
+        transform = BrownianBridgeTransform(dif=get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity, H=0.5, K=5))
 
     if helper.is_toy_dataset(args.dataset):
         train_dataset = SyntheticDataset(root=os.path.join("../reproducibility/", args.data_dir), transform=transform, problem=args.dataset,
@@ -68,8 +68,8 @@ def build_data_loader(args):
 
 class BrownianBridgeTransform(BaseTransform):
 
-    def __init__(self, g):
-        self.g = g
+    def __init__(self, dif):
+        self.dif = dif
 
     def __call__(self, data):
         bs = data.pos_0.shape[0]
@@ -78,8 +78,13 @@ class BrownianBridgeTransform(BaseTransform):
 
     def apply_transform(self, data, t):
         # assert (data.pos_0[:,1] == data.pos_T[:,1]).all(), (data.pos_0[:,1], data.pos_T[:,1])
-        data.pos_t = sample_from_brownian_bridge(g=self.g, t=t, x_0=data.pos_0, x_T=data.pos_T, t_min=0.0, t_max=1.0)
-        data.t = t
+        if self.dif.K>0:
+            COV_Tt = torch.zeros(bs,K+1,K+1)
+            for i,s in enumerate(t):
+                COV_Tt[i] = self.dif.solve_ode(s)
+        else:
+            data.pos_t = sample_from_brownian_bridge(dif=self.dif, t=t, x_0=data.pos_0, x_T=data.pos_T, t_min=0.0, t_max=1.0)
+            data.t = t
         return data
 
 

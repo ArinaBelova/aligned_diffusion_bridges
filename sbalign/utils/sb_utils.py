@@ -71,8 +71,8 @@ def beta(g, ts, steps_num):
     return beta_t
 
 
-
-def sample_from_brownian_bridge(g, t, x_0, x_T, t_min=0.0, t_max=1.0):
+# Here we simulate one full path realisation of SDE??
+def sample_from_brownian_bridge(dif, t, x_0, x_T, t_min=0.0, t_max=1.0):
     # Taken from https://en.wikipedia.org/wiki/Brownian_bridge#General_case
     assert x_0.shape == x_T.shape, "End points of Brownian bridge are not of same shape"
     assert t_max > t_min, "Start time is larger than end time"
@@ -87,7 +87,7 @@ def sample_from_brownian_bridge(g, t, x_0, x_T, t_min=0.0, t_max=1.0):
     mu_t = x_0 + ( (exp_t - t_min) * (x_T - x_0) / (t_max - t_min) )
 
     # TODO: Check the exact formula (absence of sqrt?)
-    sigma_t = torch.sqrt((t_max - exp_t) * (exp_t - t_min) / (t_max - t_min)) * g(t)
+    sigma_t = torch.sqrt((t_max - exp_t) * (exp_t - t_min) / (t_max - t_min)) * dif.g(t)
     return mu_t + sigma_t * torch.randn_like(exp_t)
 
 
