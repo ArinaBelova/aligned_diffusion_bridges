@@ -261,6 +261,27 @@ class FBB(FractionalDiffusion):
     def terminal(self, z):
         pass
 
+    def pinned_statistics(self,t,a,b):
+
+        ktT = self.transition_kernel(t,self.T)
+        k0T = self.transition_kernel(0,self.T)
+        inv_k0T = torch.linalg.inv(k0T)
+        k0t = self.transition_kernel(0,t)
+        
+        mean = ktT @ inv_k0T @ a + k0t.T @ inv_k0T.T @ b
+        cov = ktT @ inv_k0T @ k0t
+
+        return mean, cov
+    
+    
+    def transition_kernel(self,s,t):
+        eps = 1e-4
+        lam = torch.cat([torch.tensor([eps]),-self.gamma[0]])
+        lam_ij = lam[None,:] + lam[:,None]
+        print(self.G(t).shape)
+        G = self.G(t)[:,0,0,0,:]
+        return ((1/(lam_ij)) * (torch.exp(lam_ij*t)-torch.exp(lam_ij*s))) * (G[:,:,None]*G[:,None,:])
+
 class SDE(ABC, nn.Module):
     def __init__(self, device="cpu",D=1):
         
