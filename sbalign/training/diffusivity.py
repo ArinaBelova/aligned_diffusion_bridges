@@ -262,23 +262,29 @@ class FBB(FractionalDiffusion):
         pass
 
     def pinned_statistics(self,t,a,b):
-
         ktT = self.transition_kernel(t,self.T)
+
         k0T = self.transition_kernel(0,self.T)
         inv_k0T = torch.linalg.inv(k0T)
-        k0t = self.transition_kernel(0,t)
-        
-        mean = ktT @ inv_k0T @ a + k0t.T @ inv_k0T.T @ b
-        cov = ktT @ inv_k0T @ k0t
 
+        k0t = self.transition_kernel(0,t)
+
+        mean = ktT @ inv_k0T @ a + k0t.mT @ inv_k0T.mT @ b
+
+        cov = ktT @ inv_k0T @ k0t
+        eps=1e-4
+        I_eps = torch.eye(self.aug_dim, self.aug_dim,device=t.device)[None, :, :] * torch.ones((t.shape[0],self.aug_dim, self.aug_dim),device=t.device)
+       # I_eps[:,1:,1:] = I_eps[:,1:,1:] * (eps * torch.exp(-2 * self.gamma * t[:,None])[:,:,None])
+        I_eps[:,1:,1:] = I_eps[:,1:,1:] * eps 
+        cov = cov + I_eps
+        print('cov',cov)
         return mean, cov
     
     
     def transition_kernel(self,s,t):
-        eps = 1e-4
-        lam = torch.cat([torch.tensor([eps]),-self.gamma[0]])
+        eps = torch.mean(self.gamma) * 1e-1
+        lam = torch.cat([torch.tensor([-eps]),-self.gamma[0]])
         lam_ij = lam[None,:] + lam[:,None]
-        print(self.G(t).shape)
         G = self.G(t)[:,0,0,0,:]
         return ((1/(lam_ij)) * (torch.exp(lam_ij*t)-torch.exp(lam_ij*s))) * (G[:,:,None]*G[:,None,:])
 
