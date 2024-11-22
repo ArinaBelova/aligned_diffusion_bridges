@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 import torch.nn as nn
 import einops
 
-from . optimal_weights import omega_optimized, gamma_by_gamma_max, gamma_by_r
+from . optimal_weights import omega_optimized, gamma_by_gamma_max, gamma_by_r, gamma_by_range
 
 
    
@@ -59,12 +59,14 @@ class ConstantDiffusivitySchedule():
 class FractionalDiffusion(ABC, nn.Module):
     """Abstract class for all fractional diffusion dynamics of the forward process"""
 
-    def __init__(self, H=0.5, K=5, gamma_max=20.0, approx_cov=False, T=1.0, pd_eps=1e-4, device="cpu"):
+    def __init__(self, H=0.5, K=5, gamma_max=20.0, gamma_min=None, approx_cov=False, T=1.0, pd_eps=1e-4, device="cpu"):
         super(FractionalDiffusion, self).__init__()
 
         """parameters of fBM approximation"""
         self.register_buffer("H", torch.as_tensor(H, device=device))
         self.register_buffer("gamma_max", torch.as_tensor(gamma_max, device=device))
+        if gamma_min is not None:
+            self.register_buffer("gamma_min", torch.as_tensor(gamma_min, device=device))
         self.register_buffer("T", torch.as_tensor([T], device=device))
         self.K = K
 
@@ -79,7 +81,10 @@ class FractionalDiffusion(ABC, nn.Module):
             if self.K == 1:
                 gamma = gamma_by_r(K, torch.sqrt(torch.tensor(gamma_max)), device=device)
             else:
-                gamma = gamma_by_gamma_max(K, self.gamma_max, device=device)
+                if gamma_min is None:
+                    gamma = gamma_by_gamma_max(K, self.gamma_max, device=device)
+                else:
+                    gamma = gamma_by_range(K, self.gamma_min, self.gamma_max)
             omega, A, b = omega_optimized(
                 gamma, self.H, self.T, return_Ab=True, device=device
             )
@@ -227,8 +232,8 @@ class FractionalDiffusion(ABC, nn.Module):
 
 class FBB(FractionalDiffusion):
 
-    def __init__(self, H=0.5, K=5, g_max=1.0, gamma_max=20, T=1, pd_eps=0.0001, device="cpu"):
-        super().__init__(H=H, gamma_max=gamma_max, approx_cov=False, K=K, T=T, pd_eps=pd_eps, device=device)
+    def __init__(self, H=0.5, K=5, g_max=1.0, gamma_max=20.0, gamma_min=None, T=1, pd_eps=0.0001, device="cpu"):
+        super().__init__(H=H, gamma_max=gamma_max, gamma_min=gamma_min, approx_cov=False, K=K, T=T, pd_eps=pd_eps, device=device)
 
         self.g_max = g_max
 
@@ -272,18 +277,23 @@ class FBB(FractionalDiffusion):
         mean = ktT @ inv_k0T @ a + k0t.mT @ inv_k0T.mT @ b
 
         cov = ktT @ inv_k0T @ k0t
-        eps=1e-4
+        eps=1e-1
+        eps = 1.0
+        print('epsilson for covariance matrix:',eps)
         I_eps = torch.eye(self.aug_dim, self.aug_dim,device=t.device)[None, :, :] * torch.ones((t.shape[0],self.aug_dim, self.aug_dim),device=t.device)
-       # I_eps[:,1:,1:] = I_eps[:,1:,1:] * (eps * torch.exp(-2 * self.gamma * t[:,None])[:,:,None])
-        I_eps[:,1:,1:] = I_eps[:,1:,1:] * eps 
+        I_eps[:,0,0] = I_eps[:,0,0] * eps
+        I_eps[:,1:,1:] = I_eps[:,1:,1:] * (eps * torch.exp(-2 * self.gamma * t[:,None])[:,:,None])
+        #I_eps = I_eps * (eps * torch.exp(-2 * self.gamma * t[:,None])[:,:,None])
+        #I_eps[:,1:,1:] = I_eps[:,1:,1:] * eps 
         cov = cov + I_eps
-        print('cov',cov)
+        #print('cov',cov)
         return mean, cov
     
     
     def transition_kernel(self,s,t):
-        eps = torch.mean(self.gamma) * 1e-1
+        eps = torch.mean(self.gamma) * 1e-1 #this 1e-1 is too large, but choosing it smaller results in non positive definit covariance matrix
         lam = torch.cat([torch.tensor([-eps]),-self.gamma[0]])
+        print('eigenvalues:',lam)
         lam_ij = lam[None,:] + lam[:,None]
         G = self.G(t)[:,0,0,0,:]
         return ((1/(lam_ij)) * (torch.exp(lam_ij*t)-torch.exp(lam_ij*s))) * (G[:,:,None]*G[:,None,:])
