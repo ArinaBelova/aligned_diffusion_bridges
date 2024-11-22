@@ -152,7 +152,7 @@ def loss_function_conf(
 
 def loss_fn_from_args(args):
 
-    g = get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity)
+    g = get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity).g
 
     if args.task == "synthetic":
         loss_fn_base = loss_function_sbalign

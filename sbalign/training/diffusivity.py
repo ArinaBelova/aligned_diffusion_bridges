@@ -32,8 +32,8 @@ def decreasing_g(t, g_max):
     g_min = .1
     return g_max - np.square(t) * (g_max-g_min)
 
-def fbb(H, K=5, gamma_max=20.0, device="cpu"):
-    return FBB(H=H,K=K,gamma_max=gamma_max,device=device)
+def fbb(H, K=5, g_max=1.0, gamma_max=20.0,device="cpu"):
+    return FBB(H=H,K=K,g_max=g_max,gamma_max=gamma_max,device=device)
 
 diffusivity_schedules = {
     "constant": constant_g,
@@ -45,8 +45,10 @@ diffusivity_schedules = {
 
 def get_diffusivity_schedule(schedule, g_max, H=0.5, K=5):
     if schedule.lower() == 'fbb':
+        print('hello')
         return diffusivity_schedules[schedule](H=H, K=K, g_max=g_max)
     else: 
+        print('goodbye')
         return diffusivity_schedules[schedule](g_max)
     #return partial(diffusivity_schedules[schedule], g_max=g_max)
 
@@ -121,6 +123,9 @@ class FractionalDiffusion(ABC, nn.Module):
     def mean(self,x0,t):
         c_t = self.mean_scale(t)[:,None,None,None,None]
         bs,c,h,w = x0.shape
+        print('x0',x0.shape)
+        print('c_t*x0[:,:,:,:,None]',(c_t*x0[:,:,:,:,None]).shape)
+        print('to cat',torch.zeros(bs,c,h,w,self.K,device=x0.device).shape)
         return torch.cat([(c_t*x0[:,:,:,:,None]),torch.zeros(bs,c,h,w,self.K,device=x0.device)],dim=-1)
 
     def brown_moments(self,x0,t):
@@ -236,11 +241,13 @@ class FBB(FractionalDiffusion):
         super().__init__(H=H, gamma_max=gamma_max, gamma_min=gamma_min, approx_cov=False, K=K, T=T, pd_eps=pd_eps, device=device)
 
         self.g_max = g_max
+        self.solve_cov_ode()
 
     def mu(self,t):
         return torch.zeros_like(t)
 
     def g(self, t):
+        t = torch.tensor(t)
         return torch.ones_like(t) * self.g_max
 
     def integral(self,t):
@@ -265,39 +272,77 @@ class FBB(FractionalDiffusion):
 
     def terminal(self, z):
         pass
+    
+    def sample(self, t, c=2, h=1, w=1):
+        batch_size = t.shape[0]
+        print('t',t.shape)
+        cov_matrix, _, _, _, _, _, _ = self.marginal_stats(t[:,0], batch=torch.zeros(batch_size,c,h,w))
+        print('cov_matrix shape',cov_matrix.shape)
+        if h==1 and w==1:
+            sample = sample_from_batch_multivariate_normal(torch.squeeze(cov_matrix), c=c, h=h, w=w,
+                                                               batch_size=batch_size, aug_dim=self.K+1)[:,:,0,0]
+        else:
+            sample = sample_from_batch_multivariate_normal(torch.squeeze(cov_matrix), c=c, h=h, w=w,
+                                                               batch_size=batch_size, aug_dim=self.K+1)
+        return sample
 
     def pinned_statistics(self,t,a,b):
-        ktT = self.transition_kernel(t,self.T)
+        #print('t',t.shape)
+        #print('self.T',self.T.shape)
+        ktT = self.transition_kernel(t,torch.ones_like(t)*self.T)
 
-        k0T = self.transition_kernel(0,self.T)
+        #print(f"Gammas are {self.gamma}")
+        #print(f"Transition kernel of ktT is {ktT}")
+        k0T = self.transition_kernel(torch.zeros_like(t),torch.ones_like(t)*self.T)
+        #print(f"Transition kernel of k0T is {k0T}")
         inv_k0T = torch.linalg.inv(k0T)
 
-        k0t = self.transition_kernel(0,t)
-
+        k0t = self.transition_kernel(torch.zeros_like(t),t)
+        #print(f"Transition kernel of k0t is {k0t}")
+        print('a',a.shape)
+        print('b',b.shape)
+        print('ktT',ktT.shape)
+        print('k0T',k0T.shape)
+        print('k0t',k0t.shape)
         mean = ktT @ inv_k0T @ a + k0t.mT @ inv_k0T.mT @ b
 
         cov = ktT @ inv_k0T @ k0t
-        eps=1e-1
-        eps = 1.0
+        eps=1e-4
+        #eps = 1.0
         print('epsilson for covariance matrix:',eps)
-        I_eps = torch.eye(self.aug_dim, self.aug_dim,device=t.device)[None, :, :] * torch.ones((t.shape[0],self.aug_dim, self.aug_dim),device=t.device)
-        I_eps[:,0,0] = I_eps[:,0,0] * eps
-        I_eps[:,1:,1:] = I_eps[:,1:,1:] * (eps * torch.exp(-2 * self.gamma * t[:,None])[:,:,None])
+        
+        # I_eps = torch.eye(self.aug_dim, self.aug_dim,device=t.device)[None, :, :] * torch.ones((t.shape[0],self.aug_dim, self.aug_dim),device=t.device)
+        # I_eps[:,0,0] = I_eps[:,0,0] * eps
+        # I_eps[:,1:,1:] = I_eps[:,1:,1:] * (eps * torch.exp(-2 * self.gamma * t[:,None])[:,:,None])
+        I_eps = torch.eye(self.aug_dim, self.aug_dim,device=t.device) * eps
+
         #I_eps = I_eps * (eps * torch.exp(-2 * self.gamma * t[:,None])[:,:,None])
         #I_eps[:,1:,1:] = I_eps[:,1:,1:] * eps 
+        
         cov = cov + I_eps
-        #print('cov',cov)
+
+        print(f"Eigenvelus of covariance matrix: {np.linalg.eigvals(cov)}")
+        print('cov',cov)
+
+        # cov = cov[0]
+        # mean = mean[0]
         return mean, cov
     
     
     def transition_kernel(self,s,t):
-        eps = torch.mean(self.gamma) * 1e-1 #this 1e-1 is too large, but choosing it smaller results in non positive definit covariance matrix
+        eps = torch.mean(self.gamma) * 1e-4 #1e-1 #this 1e-1 is too large, but choosing it smaller results in non positive definit covariance matrix
         lam = torch.cat([torch.tensor([-eps]),-self.gamma[0]])
-        print('eigenvalues:',lam)
+        
+        #print(f'eigenvalues for times from {s} to {t}: {lam}')
         lam_ij = lam[None,:] + lam[:,None]
-        G = self.G(t)[:,0,0,0,:]
-        return ((1/(lam_ij)) * (torch.exp(lam_ij*t)-torch.exp(lam_ij*s))) * (G[:,:,None]*G[:,None,:])
 
+        G = self.G(t[:,0])[:,0,0,0,:]
+        return ((1/(lam_ij)) * (torch.exp(lam_ij*t[:,:,None])-torch.exp(lam_ij*s[:,:,None]))) * (G[:,:,None]*G[:,None,:])
+    
+    def pinned_marginals(self,t,a,b):
+        mean,cov = self.pinned_statistics(t,a,b)
+        return mean + sample_from_batch_multivariate_normal(cov, c=2,h=1,w=1,batch_size=t.shape[0], aug_dim=self.K+1)
+    
 class SDE(ABC, nn.Module):
     def __init__(self, device="cpu",D=1):
         
@@ -353,3 +398,23 @@ class PinnedSDE():
     
     def invert(self,S):
         return S
+
+
+
+def sample_from_batch_multivariate_normal(cov_matrix, c=2,h=1,w=1,batch_size=128, aug_dim=6, eps=1e-4,device='cpu'):
+
+    # Ensure covariance matrix has shape [batch_size, dim, dim]
+    assert cov_matrix.shape == (batch_size, aug_dim, aug_dim), "Covariance matrix must have shape [batch_size, dim, dim]"
+
+    # Zero mean for each distribution in the batch
+    mean = torch.zeros(batch_size, aug_dim,device=device)
+    scale_tril = torch.cholesky(cov_matrix + eps * torch.eye(cov_matrix.size(1))[None,:,:])
+    # Create the batch of Multivariate Normal distributions
+    #mvn = MultivariateNormal(mean, covariance_matrix=cov_matrix)
+    mvn = MultivariateNormal(mean, scale_tril=scale_tril)
+
+    # Sample from the distribution
+    n_samples = int(c*h*w)
+    samples = mvn.sample(sample_shape=(n_samples,))  # Samples will have shape [n_samples, batch_size, dim]
+    samples = einops.rearrange(samples, '(C H W) B K -> B C H W K', C=c, H=h, W=w)
+    return samples

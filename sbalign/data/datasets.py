@@ -37,7 +37,7 @@ def build_data(problem_name, n_samples, device):
 
 def build_data_loader(args):
     if args.transform is None:
-        transform = BrownianBridgeTransform(dif=get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity, H=0.5, K=5))
+        transform = BrownianBridgeTransform(dif=get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K))
 
     if helper.is_toy_dataset(args.dataset):
         train_dataset = SyntheticDataset(root=os.path.join("../reproducibility/", args.data_dir), transform=transform, problem=args.dataset,
@@ -69,6 +69,7 @@ def build_data_loader(args):
 class BrownianBridgeTransform(BaseTransform):
 
     def __init__(self, dif):
+
         self.dif = dif
 
     def __call__(self, data):
@@ -79,11 +80,21 @@ class BrownianBridgeTransform(BaseTransform):
     def apply_transform(self, data, t):
         # assert (data.pos_0[:,1] == data.pos_T[:,1]).all(), (data.pos_0[:,1], data.pos_T[:,1])
         if self.dif.K>0:
-            COV_Tt = torch.zeros(bs,K+1,K+1)
-            for i,s in enumerate(t):
-                COV_Tt[i] = self.dif.solve_ode(s)
+            z_0 = torch.cat([data.pos_0[:,:,None],torch.zeros(data.pos_0.shape[0],data.pos_0.shape[1],self.dif.K)],dim=-1)
+            print('z0.shape',z_0.shape)
+
+            #todo: allow for different data dimension
+            y_T = self.dif.sample(self.dif.T*torch.ones_like(t), c=2, h=1, w=1)[:,:,1:]
+            print('Y_T',y_T.shape)
+            print('data shape',data.pos_T[:,:,None].shape)
+            z_T = torch.cat([data.pos_T[:,:,None],y_T],dim=-1)
+            print('zT.shape',z_T.shape)
+            data.pos_t = self.dif.pinned_marginals(t, z_0, z_T)
+            print('data',data.pos_t.shape)
+            print('made it',xcd)
+            data.t = t
         else:
-            data.pos_t = sample_from_brownian_bridge(dif=self.dif, t=t, x_0=data.pos_0, x_T=data.pos_T, t_min=0.0, t_max=1.0)
+            data.pos_t = sample_from_brownian_bridge(g=self.dif.g, t=t, x_0=data.pos_0, x_T=data.pos_T, t_min=0.0, t_max=1.0)
             data.t = t
         return data
 

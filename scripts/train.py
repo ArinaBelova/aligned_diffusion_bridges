@@ -23,7 +23,7 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
     best_epoch = 0
     best_val_inference_epoch = 0
 
-    g = get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity)
+    g = get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity).g
     loss_fn = loss_fn_from_args(args)
     
     logs = {'val_loss': math.inf, "val_inference_rmsd": math.inf}

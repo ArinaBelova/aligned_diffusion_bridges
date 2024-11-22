@@ -6,6 +6,8 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 
+from sbalign.training.diffusivity import fbb
+
 # ---------------- Timesteps ----------------------
 
 def sinusoidal_embedding(timesteps, embedding_dim, max_positions=10000):
@@ -72,7 +74,7 @@ def beta(g, ts, steps_num):
 
 
 # Here we simulate one full path realisation of SDE??
-def sample_from_brownian_bridge(dif, t, x_0, x_T, t_min=0.0, t_max=1.0):
+def sample_from_brownian_bridge(g, t, x_0, x_T, t_min=0.0, t_max=1.0):
     # Taken from https://en.wikipedia.org/wiki/Brownian_bridge#General_case
     assert x_0.shape == x_T.shape, "End points of Brownian bridge are not of same shape"
     assert t_max > t_min, "Start time is larger than end time"
@@ -87,7 +89,7 @@ def sample_from_brownian_bridge(dif, t, x_0, x_T, t_min=0.0, t_max=1.0):
     mu_t = x_0 + ( (exp_t - t_min) * (x_T - x_0) / (t_max - t_min) )
 
     # TODO: Check the exact formula (absence of sqrt?)
-    sigma_t = torch.sqrt((t_max - exp_t) * (exp_t - t_min) / (t_max - t_min)) * dif.g(t)
+    sigma_t = torch.sqrt((t_max - exp_t) * (exp_t - t_min) / (t_max - t_min)) * g(t)
     return mu_t + sigma_t * torch.randn_like(exp_t)
 
 
@@ -113,7 +115,13 @@ diffusivity_schedules = {
     "triangular": triangular_g,
     "inverse_triangular": inverse_triangular_g,
     "decreasing": decreasing_g,
+    "fbb": fbb
 }
 
-def get_diffusivity_schedule(schedule, g_max):
-    return partial(diffusivity_schedules[schedule], g_max=g_max)
+def get_diffusivity_schedule(schedule, g_max, H=0.5, K=5):
+    if schedule.lower() == 'fbb':
+        print('hello')
+        return diffusivity_schedules[schedule](H=H, K=K, g_max=g_max)
+    else: 
+        print('goodbye')
+        return diffusivity_schedules[schedule](g_max)

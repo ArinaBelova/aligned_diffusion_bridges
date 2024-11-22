@@ -90,8 +90,10 @@ def parse_train_args(cmd_args=None):
     parser.add_argument("--reg_weight", default=1.0, type=float, help="Weight for Doobs-score regularizer")
     parser.add_argument("--reg_weight_T", default=1.0, type=float, help="Weight for Doobs-score regularizer at T")
     parser.add_argument("--reg_weight_t", default=1.0, type=float, help="Weight for Doobs-score regularizer at t")
-    parser.add_argument("--diffusivity_schedule", default="constant", type=str, help="Choose how diffusivity varies in time")
+    parser.add_argument("--diffusivity_schedule", default="fbb", type=str, help="Choose how diffusivity varies in time")
     parser.add_argument("--max_diffusivity", default=1.0, type=float, help="Maximum value of diffusivity")
+    parser.add_argument("--H", default=0.5, type=float, help="Hurst index")
+    parser.add_argument("--K", default=0, type=int, help="Number of augmenting processes")
     parser.add_argument("--use_drift_in_doobs", default=False, type=bool, 
                         help="Whether to use the drift as input to the parametrization of Doobs score")
 
