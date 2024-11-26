@@ -43,7 +43,7 @@ class SDEDrift(nn.Module):
         #print('x_encoded shape is ', x_encoded.shape) # [32, 2, 64]
 
         # I just duplicated time tensor across the channel dimension here:
-        t_encoded = t_encoded[:, None, :].repeat(1,2,1)
+        #t_encoded = t_encoded[:, None, :].repeat(1,2,1)
         #print('t_encoded shape after reshape ', t_encoded.shape) # [32, 2, 64]
         inputs = torch.cat([x_encoded, t_encoded], dim=-1)
         return self.mlp(inputs)

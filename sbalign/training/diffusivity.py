@@ -123,9 +123,6 @@ class FractionalDiffusion(ABC, nn.Module):
     def mean(self,x0,t):
         c_t = self.mean_scale(t)[:,None,None,None,None]
         bs,c,h,w = x0.shape
-        print('x0',x0.shape)
-        print('c_t*x0[:,:,:,:,None]',(c_t*x0[:,:,:,:,None]).shape)
-        print('to cat',torch.zeros(bs,c,h,w,self.K,device=x0.device).shape)
         return torch.cat([(c_t*x0[:,:,:,:,None]),torch.zeros(bs,c,h,w,self.K,device=x0.device)],dim=-1)
 
     def brown_moments(self,x0,t):
@@ -267,7 +264,12 @@ class FBB(FractionalDiffusion):
         return sigma_t[:,None,None,None,:,:]
 
     def cov(self, t):
-        t= t[None,None,None] if len(t.shape)==0 else t[:,None,None]
+        if len(t.shape)==0:
+            t = t[None,None,None]
+        elif  len(t.shape)==1:
+            t =  t[:,None,None]
+        elif len(t.shape)==2:
+            t =  t[:,:,None]
         return self.compute_cov(t)
 
     def terminal(self, z):
@@ -275,9 +277,7 @@ class FBB(FractionalDiffusion):
     
     def sample(self, t, c=2, h=1, w=1):
         batch_size = t.shape[0]
-        print('t',t.shape)
         cov_matrix, _, _, _, _, _, _ = self.marginal_stats(t[:,0], batch=torch.zeros(batch_size,c,h,w))
-        print('cov_matrix shape',cov_matrix.shape)
         if h==1 and w==1:
             sample = sample_from_batch_multivariate_normal(torch.squeeze(cov_matrix), c=c, h=h, w=w,
                                                                batch_size=batch_size, aug_dim=self.K+1)[:,:,0,0]
@@ -292,24 +292,26 @@ class FBB(FractionalDiffusion):
         ktT = self.transition_kernel(t,torch.ones_like(t)*self.T)
 
         #print(f"Gammas are {self.gamma}")
-        #print(f"Transition kernel of ktT is {ktT}")
+        #print(f"Transition kernel shape of ktT is {ktT.shape}")
         k0T = self.transition_kernel(torch.zeros_like(t),torch.ones_like(t)*self.T)
-        #print(f"Transition kernel of k0T is {k0T}")
+        #print(f"Transition kernel shape of k0T is {k0T.shape}")
         inv_k0T = torch.linalg.inv(k0T)
+        #print(f"Transition kernel shape of inv_k0T is {inv_k0T.shape}")
+        #print(f"Transition kernel shape of  TRANSPOSE of inv_k0T is {inv_k0T.mT.shape}")
 
         k0t = self.transition_kernel(torch.zeros_like(t),t)
-        #print(f"Transition kernel of k0t is {k0t}")
-        print('a',a.shape)
-        print('b',b.shape)
-        print('ktT',ktT.shape)
-        print('k0T',k0T.shape)
-        print('k0t',k0t.shape)
-        mean = ktT @ inv_k0T @ a + k0t.mT @ inv_k0T.mT @ b
+        #print(f"Transition kernel shape of k0t is {k0t.shape}")
+        #print(f"Transition kernel shape of TRANSPOSE k0t is {k0t.mT.shape}")
 
+        #print('a',a.shape)
+        #print('b',b.shape)
+
+        mean = ((ktT @ inv_k0T).unsqueeze(1) @ a.unsqueeze(-1) + (k0t.mT @ inv_k0T.mT).unsqueeze(1) @ b.unsqueeze(-1)).squeeze(-1)
+        #print('mean',mean.shape)
         cov = ktT @ inv_k0T @ k0t
         eps=1e-4
         #eps = 1.0
-        print('epsilson for covariance matrix:',eps)
+        #print('epsilson for covariance matrix:',eps)
         
         # I_eps = torch.eye(self.aug_dim, self.aug_dim,device=t.device)[None, :, :] * torch.ones((t.shape[0],self.aug_dim, self.aug_dim),device=t.device)
         # I_eps[:,0,0] = I_eps[:,0,0] * eps
@@ -321,8 +323,8 @@ class FBB(FractionalDiffusion):
         
         cov = cov + I_eps
 
-        print(f"Eigenvelus of covariance matrix: {np.linalg.eigvals(cov)}")
-        print('cov',cov)
+        #print(f"Eigenvelus of covariance matrix: {np.linalg.eigvals(cov)}")
+        #print('cov',cov)
 
         # cov = cov[0]
         # mean = mean[0]
@@ -341,8 +343,9 @@ class FBB(FractionalDiffusion):
     
     def pinned_marginals(self,t,a,b):
         mean,cov = self.pinned_statistics(t,a,b)
-        return mean + sample_from_batch_multivariate_normal(cov, c=2,h=1,w=1,batch_size=t.shape[0], aug_dim=self.K+1)
-    
+        return mean + sample_from_batch_multivariate_normal(cov, c=2,h=1,w=1,batch_size=t.shape[0], aug_dim=self.K+1).squeeze()
+
+
 class SDE(ABC, nn.Module):
     def __init__(self, device="cpu",D=1):
         
@@ -417,4 +420,45 @@ def sample_from_batch_multivariate_normal(cov_matrix, c=2,h=1,w=1,batch_size=128
     n_samples = int(c*h*w)
     samples = mvn.sample(sample_shape=(n_samples,))  # Samples will have shape [n_samples, batch_size, dim]
     samples = einops.rearrange(samples, '(C H W) B K -> B C H W K', C=c, H=h, W=w)
+
+    # if h == 1:
+    #     samples = torch.squeeze(samples, 2)
+    # if w == 1:
+    #     samples = torch.squeeze(samples, 3)
+
     return samples
+
+
+def matrix_vector_mp(A,v):
+
+    '''
+    # Example tensors A and v
+    A = torch.randn(128, 2, 1, 1, 6, 6)
+    v = torch.randn(128, 2, 1, 1, 6)
+    '''
+
+    # Reshape v to have an additional dimension at the end (for matrix-vector multiplication)
+    v_expanded = v.unsqueeze(-1)  # Now v has shape (128, 2, 1, 1, 6, 1)
+
+    # Perform matrix-vector multiplication
+    result = A @ v_expanded
+
+    # The result will have shape (128, 2, 1, 1, 6, 1), you might want to remove the last dimension
+    result_squeezed = result.squeeze(-1)  # Now result has shape (128, 2, 1, 1, 6)
+    return result_squeezed
+
+
+def fractional_data_transform(data, diffusivity_schedule, max_diffusivity, H=0.5, K=0):
+    dif=get_diffusivity_schedule(diffusivity_schedule, max_diffusivity, H=H, K=K)
+    if dif.K>0:
+        data.pos_t, data.cond_var_t = fractional_input_transform(data.pos_t, data.t, data.aug_pos_T[:,:,1:], dif)
+    #    _, _, _, _, eta_Tt, sig_Tt, tau_Tt = dif.marginal_stats(1.0 - data.t[:,0])
+    #    data.cond_var_t =  (sig_Tt - tau_Tt)[:,0,0]
+    #    varphi = dif.g(data.t) * dif.omega * dif.gamma * (1.0 - data.t) + torch.exp(-dif.gamma * (1.0 - data.t))
+    #    data.pos_t = data.pos_t[:,:,0] + torch.sum(eta_Tt[:,0,0] * data.aug_pos_T[:,:,1:] + varphi[:,None,:] * data.pos_t[:,:,1:], dim=-1)
+        
+def fractional_input_transform(z_t, t, yT, dif):
+    _, _, _, _, eta_Tt, sig_Tt, tau_Tt = dif.marginal_stats(1.0 - t[:,0])
+    cond_var_t =  (sig_Tt - tau_Tt)[:,0,0]
+    varphi = dif.g(t) * dif.omega * dif.gamma * (1.0 - t) + torch.exp(-dif.gamma * (1.0 - t))
+    return z_t[:,:,0] + torch.sum(eta_Tt[:,0,0] * yT + varphi[:,None,:] * z_t[:,:,1:], dim=-1), cond_var_t

@@ -26,7 +26,7 @@ def loss_function_sbalign(
     # t_diff = (1.0 - data.t) + 1e-8
     t_diff = (beta(g, 1, steps_num) - beta(g, data.t, steps_num)).to(DEVICE)
 
-    x_diff = (data.pos_T - data.pos_t)
+    x_diff = (data.pos_T - data.pos_t) / data.cond_var_t
 
     bb_drift_true = (x_diff) / t_diff
     bb_drift_pred = drift_x_pred + doobs_score_x_pred

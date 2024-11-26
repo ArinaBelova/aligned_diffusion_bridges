@@ -19,7 +19,7 @@ class DoobHScore(nn.Module):
         super().__init__(**kwargs)
 
         # TODO: Make this a parameter
-        time_embs_dim = 32
+        time_embs_dim = 64 #32
 
         if use_drift_in_doobs:
             input_dim = 3 * h_dim + time_embs_dim
