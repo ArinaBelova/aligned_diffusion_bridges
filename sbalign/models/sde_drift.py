@@ -35,7 +35,15 @@ class SDEDrift(nn.Module):
             self.timestep_emb_fn = lambda x: x 
     
     def forward(self, x, t):
+        #print('t shape ', t.shape) #[32, 1]
         t_encoded = self.t_enc(self.timestep_emb_fn(t))
-        x_encoded = self.x_enc(x)
+        #print('t_encoded shape ', t_encoded.shape) # [32, 64]
+        #print('t_encoded shape ', t_encoded[:, None, :].shape) # [32, 1, 64]
+        x_encoded = self.x_enc(x) 
+        #print('x_encoded shape is ', x_encoded.shape) # [32, 2, 64]
+
+        # I just duplicated time tensor across the channel dimension here:
+        t_encoded = t_encoded[:, None, :].repeat(1,2,1)
+        #print('t_encoded shape after reshape ', t_encoded.shape) # [32, 2, 64]
         inputs = torch.cat([x_encoded, t_encoded], dim=-1)
         return self.mlp(inputs)

@@ -81,17 +81,10 @@ class BrownianBridgeTransform(BaseTransform):
         # assert (data.pos_0[:,1] == data.pos_T[:,1]).all(), (data.pos_0[:,1], data.pos_T[:,1])
         if self.dif.K>0:
             z_0 = torch.cat([data.pos_0[:,:,None],torch.zeros(data.pos_0.shape[0],data.pos_0.shape[1],self.dif.K)],dim=-1)
-            print('z0.shape',z_0.shape)
-
             #todo: allow for different data dimension
             y_T = self.dif.sample(self.dif.T*torch.ones_like(t), c=2, h=1, w=1)[:,:,1:]
-            print('Y_T',y_T.shape)
-            print('data shape',data.pos_T[:,:,None].shape)
             z_T = torch.cat([data.pos_T[:,:,None],y_T],dim=-1)
-            print('zT.shape',z_T.shape)
             data.pos_t = self.dif.pinned_marginals(t, z_0, z_T)
-            print('data',data.pos_t.shape)
-            print('made it',xcd)
             data.t = t
         else:
             data.pos_t = sample_from_brownian_bridge(g=self.dif.g, t=t, x_0=data.pos_0, x_T=data.pos_T, t_min=0.0, t_max=1.0)

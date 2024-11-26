@@ -12,6 +12,7 @@ from sbalign.utils.definitions import DEVICE
 from proteins.docking.dock_engine import DockingEngine
 from proteins.conf.conf_engine import ConfEngine
 
+from sbalign.training.diffusivity import get_diffusivity_schedule
 
 class ProgressMonitor:
 
@@ -43,7 +44,7 @@ def train_epoch_sbalign(
         model, loader, 
         optimizer, loss_fn,
         grad_clip_value: float = None, 
-        ema_weights=None):
+        ema_weights=None, args=None):
 
     model.train()
     monitor = ProgressMonitor()
@@ -53,6 +54,23 @@ def train_epoch_sbalign(
 
         try:
             data = data.to(DEVICE)
+
+            ###### WIP #######
+            #print('Data',data.pos_t.shape) #[32,2,2]
+            #we need fbb here
+            #sigma_Tt = sigma(T-t) = fbb.cov(T-t)
+            
+            dif=get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K)
+            #print('T - t ', (1.0 - data.t))
+            sigma_Tt = dif.cov(1.0 - data.t)
+            
+            #calculate eta_T as in gfdm or for now instantiate it as a vector of appropriate dimension
+            eta_T = torch.ones(data.pos_t.shape[0],1,1) # it is a scalar based on the overleaf
+            #calculate varphi
+            #data.pos_t = data.pos_t[:,:,0] + eta_T @ pos_T[:,:,1:] + varphi @ data.pos_t[:,:,1:]
+            #################
+
+
             drift_x, doobs_score_x, doobs_score_x_T = model(data)
 
             loss, loss_dict = loss_fn(drift_x_pred=drift_x,

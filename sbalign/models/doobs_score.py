@@ -40,6 +40,12 @@ class DoobHScore(nn.Module):
     
     def forward(self, x, x_T, drift_x, t):
         time_embs = self.time_embedding(t)
+
+        print('time_embs ', time_embs.shape) # [32, 32]
+        print('self.x_enc(x) ', self.x_enc(x).shape) # [32, 2, 64]
+        print('self.x_enc(x_T) ', self.x_enc(x_T).shape) # [32, 64]
+        print('self.x_enc(drift_x) ', self.x_enc(drift_x).shape) # [32, 2, 64]
+
         if self.use_drift_in_doobs:
             inputs = torch.cat([self.x_enc(x), self.x_enc(x_T), self.x_enc(drift_x), time_embs], dim=-1)
         else:
