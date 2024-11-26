@@ -66,9 +66,9 @@ def load_model(filename, args):
 
     model.load_state_dict(torch.load(filename))
 
-    g = get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity)
+    dif = get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K)
 
-    return model, g
+    return model, dif
 
 
 class AlignExperiment:
@@ -76,6 +76,7 @@ class AlignExperiment:
     def __init__(self, config, model, diffusivity):
         self.config = config
         self.model = model
+        print('diffusivity',type(diffusivity))
         self.diffusivity = diffusivity
     
     def run(cmd_args):
@@ -90,10 +91,11 @@ class AlignExperiment:
         config = vars(parse_train_args(list_args))
         list_args += ["--data_dir="+config["dataset"], "--log_dir="+os.path.join("../reproducibility/", config["dataset"], "model"), "--run_name="+"".join(np.random.choice(list("qwertyuiopasdfghjklzxcvbnm"), size=(9,)))]
         config = OmegaConf.create(vars(parse_train_args(list_args)))
+        print('config',config)
 
         model = train.main(list_args)
 
-        dif = get_diffusivity_schedule(config.diffusivity_schedule, config.max_diffusivity)
+        dif = get_diffusivity_schedule(config.diffusivity_schedule, config.max_diffusivity, H=config.H, K=config.K)
         
 
         # Default save
