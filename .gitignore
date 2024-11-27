@@ -43,3 +43,5 @@ inference/
 dump*
 sb_align/data/
 *.pdb;
+
+reproducibility/moon/model/*

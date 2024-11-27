@@ -45,10 +45,8 @@ diffusivity_schedules = {
 
 def get_diffusivity_schedule(schedule, g_max, H=0.5, K=5):
     if schedule.lower() == 'fbb':
-        print('hello')
         return diffusivity_schedules[schedule](H=H, K=K, g_max=g_max)
     else: 
-        print('goodbye')
         return diffusivity_schedules[schedule](g_max)
     #return partial(diffusivity_schedules[schedule], g_max=g_max)
 
