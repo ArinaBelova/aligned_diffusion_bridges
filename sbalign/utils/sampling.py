@@ -9,7 +9,7 @@ def sampling(pos_0, model, diffusivity, inference_steps, t_schedule, apply_score
 
     model.eval()
     g = diffusivity.g
-    
+
     if diffusivity.K > 0:
         pos = torch.cat([pos_0[:,:,None],torch.zeros(pos_0.shape[0], pos_0.shape[1], diffusivity.K)],dim=-1)
         y_T = diffusivity.sample(diffusivity.T*torch.ones(pos_0.shape[0],1), c=2, h=1, w=1)[:,:,1:]
@@ -28,6 +28,7 @@ def sampling(pos_0, model, diffusivity, inference_steps, t_schedule, apply_score
             if diffusivity.K > 0:
 
                 nn_input, cond_var = fractional_input_transform(pos, t[None,None], y_T, diffusivity)
+                y_t = pos[:,:,1:]
                 cond_std = torch.sqrt(cond_var)
             # _, _, _, _, eta_Tt, sig_Tt, tau_Tt = diffusivity.marginal_stats(1.0 - t)
 
@@ -35,7 +36,7 @@ def sampling(pos_0, model, diffusivity, inference_steps, t_schedule, apply_score
             #varphi = dif.g(data.t) * dif.omega * dif.gamma * (1.0 - data.t) + torch.exp(-dif.gamma * (1.0 - data.t))
             #data.pos_t = data.pos_t[:,:,0] + torch.sum(eta_Tt[:,0,0] * data.aug_pos_T[:,:,1:] + varphi[:,None,:] * data.pos_t[:,:,1:], dim=-1)
             
-                drift_pos_x = (1/cond_std) * model.run_drift(nn_input, torch.ones(nn_input.shape[0]).to(DEVICE)* t)
+                drift_pos_x = -(1/cond_std) * model.run_drift(nn_input, torch.ones(nn_input.shape[0]).to(DEVICE)* t)
                 varphi = diffusivity.g(t[None,None]) * diffusivity.omega * diffusivity.gamma * (1.0 - t[None,None]) + torch.exp(-diffusivity.gamma * (1.0 - t[None,None]))
                 #print('drift_pos_x',drift_pos_x.shape)
                 #print('varphi ',varphi.shape)
@@ -43,8 +44,9 @@ def sampling(pos_0, model, diffusivity, inference_steps, t_schedule, apply_score
                 #print('cond_score',cond_score.shape)
                 zeros = torch.zeros_like(nn_input)[:, :, None]
                 _,_, _, cov_yy, _, _, _ = diffusivity.marginal_stats(t[None,None])
-                y_t = pos[:,:,1:]
-                nabla_y_t = torch.linalg.solve(cov_yy, torch.squeeze(y_t), left=False)[:, :, :]
+                
+                nabla_y_t = torch.linalg.solve(cov_yy, y_t.unsqueeze(-1)).squeeze(-1)
+
                 #print('nabla_y_t', nabla_y_t.shape)
                 score_y_t = -torch.cat([zeros, nabla_y_t], dim=-1)
                 #print('score_y_t',score_y_t.shape)
