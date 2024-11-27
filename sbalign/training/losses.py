@@ -26,7 +26,12 @@ def loss_function_sbalign(
     # t_diff = (1.0 - data.t) + 1e-8
     t_diff = (beta(g, 1, steps_num) - beta(g, data.t, steps_num)).to(DEVICE)
 
-    x_diff = (data.pos_T - data.pos_t) / data.cond_var_t
+    if data.mode == 'augmented':
+        cond_std = torch.sqrt(data.cond_var_t)
+    else:
+        cond_std = 1.0
+
+    x_diff = (1/cond_std) * (data.pos_T - data.pos_t)
 
     bb_drift_true = (x_diff) / t_diff
     bb_drift_pred = drift_x_pred + doobs_score_x_pred

@@ -7,13 +7,17 @@ from sbalign.training.diffusivity import fractional_input_transform, matrix_vect
 
 def sampling(pos_0, model, diffusivity, inference_steps, t_schedule, apply_score=False, return_traj: bool=False):
 
-    #pos_0 = pos_0.clone()
-    pos = torch.cat([pos_0[:,:,None],torch.zeros(pos_0.shape[0], pos_0.shape[1], diffusivity.K)],dim=-1)
-    g = diffusivity.g
-
     model.eval()
-    y_T = diffusivity.sample(diffusivity.T*torch.ones(pos_0.shape[0],1), c=2, h=1, w=1)[:,:,1:]
-    trajectory = np.zeros((inference_steps+1, *pos_0.shape, diffusivity.K+1))
+    g = diffusivity.g
+    
+    if diffusivity.K > 0:
+        pos = torch.cat([pos_0[:,:,None],torch.zeros(pos_0.shape[0], pos_0.shape[1], diffusivity.K)],dim=-1)
+        y_T = diffusivity.sample(diffusivity.T*torch.ones(pos_0.shape[0],1), c=2, h=1, w=1)[:,:,1:]
+        trajectory = np.zeros((inference_steps+1, *pos_0.shape, diffusivity.K+1))
+    else:
+        pos = pos_0.clone()
+        trajectory = np.zeros((inference_steps+1, *pos_0.shape))   
+
     trajectory[0] = pos.cpu()
 
     dt = t_schedule[1] - t_schedule[0]

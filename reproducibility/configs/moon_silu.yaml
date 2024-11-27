@@ -24,7 +24,7 @@ h_dim: 64
 n_layers: 2
 activation: silu
 dropout_p: 0.1
-run_name: hzfyurrwk
+run_name: rebsdxyyt
 n_epochs: 1
 use_grad_noise: false
 drift_weight: 1.0
@@ -34,7 +34,7 @@ reg_weight_t: 1.0
 diffusivity_schedule: fbb
 max_diffusivity: 0.7
 H: 0.5
-K: 2
+K: 0
 use_drift_in_doobs: true
 optim_name: adamw
 lr: 0.001
