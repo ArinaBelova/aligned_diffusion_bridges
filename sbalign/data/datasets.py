@@ -83,7 +83,7 @@ class BrownianBridgeTransform(BaseTransform):
             data.mode = 'augmented'
             data.aug_pos_0 = torch.cat([data.pos_0[:,:,None],torch.zeros(data.pos_0.shape[0],data.pos_0.shape[1],self.dif.K)],dim=-1)
             
-            #todo: allow for different data dimension
+            #TODO: do sampling for Ys differently AND allow for different data dimension 
             y_T = self.dif.sample(self.dif.T*torch.ones_like(t), c=2, h=1, w=1)[:,:,1:]
             data.aug_pos_T = torch.cat([data.pos_T[:,:,None],y_T],dim=-1)
             data.pos_t = self.dif.pinned_marginals(t, data.aug_pos_0, data.aug_pos_T)

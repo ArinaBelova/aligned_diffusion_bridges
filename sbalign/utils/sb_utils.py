@@ -6,7 +6,7 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 
-from sbalign.training.diffusivity import fbb
+from sbalign.training.diffusivity import fbb, ConstantDiffusivitySchedule
 
 # ---------------- Timesteps ----------------------
 
@@ -96,7 +96,8 @@ def sample_from_brownian_bridge(g, t, x_0, x_T, t_min=0.0, t_max=1.0):
 # --------- Diffusivity Schedule ---------
 
 def constant_g(t, g_max):
-    return np.ones_like(t) * g_max
+    return ConstantDiffusivitySchedule(g_max)
+    #return np.ones_like(t) * g_max
 
 def triangular_g(t, g_max):
     g_min = 0.85
@@ -124,4 +125,5 @@ def get_diffusivity_schedule(schedule, g_max, H=0.5, K=5):
         return diffusivity_schedules[schedule](H=H, K=K, g_max=g_max)
     else: 
         print('goodbye')
-        return diffusivity_schedules[schedule](g_max)
+        # t here is just a placeholder
+        return diffusivity_schedules[schedule](t=0,g_max=g_max)

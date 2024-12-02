@@ -36,8 +36,8 @@ def sampling(pos_0, model, diffusivity, inference_steps, t_schedule, apply_score
             #varphi = dif.g(data.t) * dif.omega * dif.gamma * (1.0 - data.t) + torch.exp(-dif.gamma * (1.0 - data.t))
             #data.pos_t = data.pos_t[:,:,0] + torch.sum(eta_Tt[:,0,0] * data.aug_pos_T[:,:,1:] + varphi[:,None,:] * data.pos_t[:,:,1:], dim=-1)
             
-                drift_pos_x = -(1/cond_std) * model.run_drift(nn_input, torch.ones(nn_input.shape[0]).to(DEVICE)* t)
-                varphi = diffusivity.g(t[None,None]) * diffusivity.omega * diffusivity.gamma * (1.0 - t[None,None]) + torch.exp(-diffusivity.gamma * (1.0 - t[None,None]))
+                drift_pos_x = (1/cond_std) * model.run_drift(nn_input, torch.ones(nn_input.shape[0]).to(DEVICE)* t)
+                varphi = torch.exp(-diffusivity.gamma * (1.0 - t[None,None]))
                 #print('drift_pos_x',drift_pos_x.shape)
                 #print('varphi ',varphi.shape)
                 cond_score = torch.cat([drift_pos_x[:,:,None], -varphi[:,None,:] * drift_pos_x[:,:,None]], dim=-1)

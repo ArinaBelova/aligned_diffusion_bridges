@@ -53,6 +53,8 @@ def get_diffusivity_schedule(schedule, g_max, H=0.5, K=5):
 class ConstantDiffusivitySchedule():
     def __init__(self, g_max):
         self.g_max = g_max
+        self.K = 0
+        self.H = 0.5
     def g(self, t):
         return np.ones_like(t) * self.g_max
 
@@ -335,7 +337,9 @@ class FBB(FractionalDiffusion):
         
         #print(f'eigenvalues for times from {s} to {t}: {lam}')
         lam_ij = lam[None,:] + lam[:,None]
-
+        
+        # print("time shape ", t.shape)
+        # print("G shape ", self.G(t[:,0])[:,0,0,0,:])
         G = self.G(t[:,0])[:,0,0,0,:]
         return ((1/(lam_ij)) * (torch.exp(lam_ij*t[:,:,None])-torch.exp(lam_ij*s[:,:,None]))) * (G[:,:,None]*G[:,None,:])
     
@@ -458,5 +462,5 @@ def fractional_data_transform(data, diffusivity_schedule, max_diffusivity, H=0.5
 def fractional_input_transform(z_t, t, yT, dif):
     _, _, _, _, eta_Tt, sig_Tt, tau_Tt = dif.marginal_stats(1.0 - t[:,0])
     cond_var_t =  (sig_Tt - tau_Tt)[:,0,0]
-    varphi = dif.g(t) * dif.omega * dif.gamma * (1.0 - t) + torch.exp(-dif.gamma * (1.0 - t))
-    return z_t[:,:,0] + torch.sum(eta_Tt[:,0,0] * yT + varphi[:,None,:] * z_t[:,:,1:], dim=-1), cond_var_t
+    varphi = torch.exp(-dif.gamma * (1.0 - t))
+    return z_t[:,:,0] + torch.sum(eta_Tt[:,0,0] * yT - varphi[:,None,:] * z_t[:,:,1:], dim=-1), cond_var_t
