@@ -461,6 +461,11 @@ def fractional_data_transform(data, diffusivity_schedule, max_diffusivity, H=0.5
         
 def fractional_input_transform(z_t, t, yT, dif):
     _, _, _, _, eta_Tt, sig_Tt, tau_Tt = dif.marginal_stats(1.0 - t[:,0])
-    cond_var_t =  (sig_Tt - tau_Tt)[:,0,0]
+
+    # print("eta_Tt ", eta_Tt.shape)
+    # print("sig_Tt ", sig_Tt.shape)
+    # print("tau_Tt ", tau_Tt.shape)
+
+    cond_var_t =  (sig_Tt - tau_Tt)[:,0,0,:]
     varphi = torch.exp(-dif.gamma * (1.0 - t))
-    return z_t[:,:,0] + torch.sum(eta_Tt[:,0,0] * yT - varphi[:,None,:] * z_t[:,:,1:], dim=-1), cond_var_t
+    return z_t[:,:,0] + torch.sum(eta_Tt[:,0,0,:,:] * yT - varphi[:,None,:] * z_t[:,:,1:], dim=-1), cond_var_t
