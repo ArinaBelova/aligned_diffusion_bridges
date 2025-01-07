@@ -3,7 +3,7 @@ aggr: mean
 center_conformations: true
 center_max_radius: 30.0
 config: null
-data_dir: data
+data_dir: sbalign/data
 dataset: d3pm
 diffusivity_schedule: constant
 distance_embed_dim: 32
