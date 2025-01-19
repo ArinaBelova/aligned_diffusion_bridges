@@ -54,8 +54,7 @@ def train_epoch_sbalign(
 
         try:
             data = data.to(DEVICE)
-            fractional_data_transform(data, args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K)
-
+            #fractional_data_transform(data, args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K)
             drift_x, doobs_score_x, doobs_score_x_T = model(data)
 
             loss, loss_dict = loss_fn(drift_x_pred=drift_x,
@@ -107,7 +106,7 @@ def test_epoch_sbalign(model, loader, loss_fn, args):
         try:
             with torch.no_grad():
                 data = data.to(DEVICE)
-                fractional_data_transform(data, args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K)
+                #fractional_data_transform(data, args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K)
 
                 drift_x, doobs_score_x, doobs_score_x_T = model(data)
                 

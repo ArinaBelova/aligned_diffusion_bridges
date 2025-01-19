@@ -79,20 +79,29 @@ class BrownianBridgeTransform(BaseTransform):
 
     def apply_transform(self, data, t):
         # assert (data.pos_0[:,1] == data.pos_T[:,1]).all(), (data.pos_0[:,1], data.pos_T[:,1])
-        if self.dif.K>0:
+        dif = self.dif
+        if dif.K>0:
+            # data.mode = 'augmented'
+            # data.aug_pos_0 = torch.cat([data.pos_0[:,:,None],torch.zeros(data.pos_0.shape[0],data.pos_0.shape[1],self.dif.K)],dim=-1)
+
+            # #TODO: do sampling for Ys differently AND allow for different data dimension 
+            # y_T = self.dif.sample(self.dif.T*torch.ones_like(t), c=2, h=1, w=1)[:,:,1:]
+            # data.aug_pos_T = torch.cat([data.pos_T[:,:,None],y_T],dim=-1)
+            # data.pos_t = self.dif.pinned_marginals(t, data.aug_pos_0, data.aug_pos_T)
+            # data.t = t
             data.mode = 'augmented'
-            data.aug_pos_0 = torch.cat([data.pos_0[:,:,None],torch.zeros(data.pos_0.shape[0],data.pos_0.shape[1],self.dif.K)],dim=-1)
             
-            #TODO: do sampling for Ys differently AND allow for different data dimension 
-            y_T = self.dif.sample(self.dif.T*torch.ones_like(t), c=2, h=1, w=1)[:,:,1:]
-            data.aug_pos_T = torch.cat([data.pos_T[:,:,None],y_T],dim=-1)
-            data.pos_t = self.dif.pinned_marginals(t, data.aug_pos_0, data.aug_pos_T)
+            z = dif.sample_pinned(t, dif.T, data.pos_0, data.pos_T, dif.omega, dif.gamma, dif.g)
+            x = z[:,:,0]
+            Y = z[:,:,1:]
+            data.pos_t = dif.input_transform(x,Y,t,dif.T,dif.omega, dif.gamma,dif.g)
             data.t = t
+            data.cond_var_t = dif.cond_var(t,dif.T,dif.omega,dif.gamma,dif.g)[:,None]
         else:
             data.mode = 'brownian'
             data.pos_t = sample_from_brownian_bridge(g=self.dif.g, t=t, x_0=data.pos_0, x_T=data.pos_T, t_min=0.0, t_max=1.0)
-            data.aug_pos_0 = data.pos_0
-            data.aug_pos_T = data.pos_T
+            #data.aug_pos_0 = data.pos_0
+            #data.aug_pos_T = data.pos_T
             data.t = t
         return data
 

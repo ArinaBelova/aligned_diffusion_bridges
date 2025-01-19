@@ -24,7 +24,7 @@ def loss_function_sbalign(
     assert data.t.max().item() <= t_max
 
     if data.mode == 'augmented':
-        t_diff = torch.sqrt(data.cond_var_t)
+        t_diff = data.cond_var_t
     else:
         t_diff = (beta(g, 1, steps_num) - beta(g, data.t, steps_num)).to(DEVICE)
 

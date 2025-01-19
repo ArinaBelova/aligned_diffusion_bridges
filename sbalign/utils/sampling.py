@@ -55,7 +55,7 @@ def sampling(pos_0, model, diffusivity, inference_steps, t_schedule, apply_score
                 
                 # From the step 1 this is huge:
                 #cond_std = 1.0
-                drift_pos_x = (1/cond_std) * model.run_drift(nn_input, torch.ones(nn_input.shape[0]).to(DEVICE)* t)
+                drift_pos_x = model.run_drift(nn_input, torch.ones(nn_input.shape[0]).to(DEVICE)* t)
 
                 print("drift_pos_x", drift_pos_x)
 

@@ -17,6 +17,9 @@ def omega_optimized(gamma, hurst, time_horizon, return_cost=False, return_Ab = F
         Approximation of the quadrature values, needed to approximate fractional brownian motion in markovian setting.
     """
 
+    if len(time_horizon.shape) == 2:
+        time_horizon = time_horizon[:,0]
+        
     gamma = torch.as_tensor(gamma, device=device)
     time_horizon = torch.as_tensor(time_horizon, device=device)
   #  print('gamma',gamma)
