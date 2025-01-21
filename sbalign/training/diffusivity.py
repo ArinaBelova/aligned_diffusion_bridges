@@ -105,7 +105,7 @@ class FractionalSchrödingerBridge(nn.Module):
         self.register_buffer("gamma_j", self.gamma[:, None, :].clone())
         self.update_omega(omega,A=A,b=b)
 
-        self.g_max =  torch.tensor(g_max)/torch.sum(self.omega)
+        self.g_max =  torch.tensor(g_max)#/torch.sum(self.omega)
 
         if self.K>0:
             F = torch.zeros(K+1,K+1)
