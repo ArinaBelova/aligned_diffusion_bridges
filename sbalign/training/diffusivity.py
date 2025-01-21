@@ -33,6 +33,8 @@ def decreasing_g(t, g_max):
     return g_max - np.square(t) * (g_max-g_min)
 
 def fbb(H, K=5, g_max=1.0, gamma_max=20.0,device="cpu"):
+    print('init H in fbb',H)
+    print('init K fbb',K)
     return FractionalSchrödingerBridge(H=H,K=K,g_max=g_max,gamma_max=gamma_max,device=device)
 
 diffusivity_schedules = {
@@ -103,15 +105,16 @@ class FractionalSchrödingerBridge(nn.Module):
         self.register_buffer("gamma_j", self.gamma[:, None, :].clone())
         self.update_omega(omega,A=A,b=b)
 
-        self.register_buffer("g", torch.tensor(g_max))
+        self.g_max =  torch.tensor(g_max)/torch.sum(self.omega)
 
-        # F = torch.zeros(K+1,K+1)
-        # F[:,1:] = -torch.vstack([self.g*(self.omega * self.gamma)[0],torch.diag(gamma[0])])
-        # self.register_buffer("F", F)
+        if self.K>0:
+            F = torch.zeros(K+1,K+1)
+            F[:,1:] = -torch.vstack([self.g_max*(self.omega * self.gamma)[0],torch.diag(self.gamma[0])])
+            self.register_buffer("F_t", F)
 
-        # G = torch.ones(K+1)
-        # G[0] = torch.sum(fbb.omega) * g
-        # self.register_buffer("G", G)
+            G = torch.ones(K+1)
+            G[0] = torch.sum(self.omega) * self.g_max
+            self.register_buffer("G_t", G)
 
     def update_omega(self,omega,A=None,b=None):
 
@@ -126,11 +129,22 @@ class FractionalSchrödingerBridge(nn.Module):
         self.register_buffer("omega_j", self.omega[:, None, :].clone())
         self.double_sum_omega = torch.sum(self.omega_i * self.omega_j, dim=(1, 2))
 
+    def g(self,t):
+        if self.K>0:
+            return self.g_max
+        else:
+            return torch.ones_like(torch.tensor(t)) * self.g_max
+    
+    # def g(self,t):
+    #     return self.g_max
+    
     def cond_mean(self,x,Y,t,T,omega,gamma,g):
-        
+
         t = t[:,:,None]
         T = T[:,:,None]
-        
+        gamma = gamma[:,None,:]
+        omega = omega[:,None,:]
+
         return x - g * torch.sum(omega*(1-torch.exp(-gamma*(T -t)))*Y,dim=-1)
     
     def cond_var(self,t,T,omega,gamma,g):
@@ -146,6 +160,11 @@ class FractionalSchrödingerBridge(nn.Module):
         return g * torch.sum((omega_i * omega_j)/(gamma_i+gamma_j) * (1-torch.exp(-(gamma_i+gamma_j)*(T-t))),dim=(1,2))
 
     def zeta(self,t,T,gamma,g):
+
+        t = t[:,:,None]
+        T = T[:,:,None]
+        gamma = gamma[:,None,:] 
+        
         return g * (1-torch.exp(-gamma*(T -t)))
 
     def covX(self,s,t, omega, gamma, g):
@@ -179,7 +198,7 @@ class FractionalSchrödingerBridge(nn.Module):
         return g * torch.sum(s,axis=2)
 
     def covY(self,t,gamma,eps=1e-4):
-        
+
         K = gamma.shape[1]
         t = t[:,:,None]
 
@@ -193,12 +212,11 @@ class FractionalSchrödingerBridge(nn.Module):
         return Sig_y + I_eps
 
     def covZ(self,t,omega,gamma,g,eps=1e-4):
-
         K = omega.shape[1]
         bs = t.shape[0]
         Sig = torch.zeros(bs, K+1,K+1)
         
-        Sig_xy = self.covYX(t,t,omega,gamma,g)
+        Sig_xy = self.covYX(t,t, omega, gamma, g)
         Sig[:,0,0] = self.cond_var(torch.zeros_like(t),t,omega,gamma,g)
         Sig[:,1:,0] = Sig_xy
         Sig[:,0,1:] = Sig_xy
@@ -206,15 +224,12 @@ class FractionalSchrödingerBridge(nn.Module):
 
         assert ((torch.diag(Sig[0])>0).all()), f'Found negativ variance: \n {torch.diag(Sig[0])<0}'
 
-        return Sig 
+        return Sig
 
     def sample_pinned(self,t,T,x0,xT,omega,gamma,g):
 
         K = omega.shape[1]
         bs = x0.shape[0]
-
-        # mu = torch.zeros(bs,K+1)
-        # mu[:,0] = x0[:,0]
 
         mu = torch.zeros(x0.shape+(K+1,))
         mu[:,:,0] = x0
@@ -223,20 +238,7 @@ class FractionalSchrödingerBridge(nn.Module):
         Sig_zx[:,0] = self.covX(t,T,omega,gamma,g)
         Sig_zx[:,1:] = self.covYX(t,T,omega,gamma,g)
 
-        # print('t',t.shape)
-        # print('T',T.shape)
-        # print('x0',x0.shape)
-        # print('xT',xT.shape)
-        # print('mu',mu.shape)
-        # print('scale',(1/self.cond_var(torch.zeros_like(T),T,omega,gamma,g)).shape)
-        # print('Sig_zx',Sig_zx.shape)
-        # print('dif',(xT-x0).shape)
-        # mu is of shape (bs,data_dim,K+1)
-        # scale is of shape (1,)
-        # Sig_zx does only depend on time and aug_dim, so it is (bs,K+1)
-        # for bs=1 we would have Sig_zx * (xT-x0) of shape (K+1) as a constant scale
-        # so scale * Sig_zx * (xT-x0) shoud be (1) * (bs,None,K+1) * (bs,data_dim,None)
-        mu_bar = mu + (1/self.cond_var(torch.zeros_like(T),T,omega,gamma,g)) * Sig_zx[:,None,:] * (xT-x0)[:,:,None]
+        mu_bar = mu + (1/self.cond_var(torch.zeros_like(T),T,omega,gamma,g)) * Sig_zx[:,None,:] * ((xT-x0)[:,:,None])
         Sig_bar = self.covZ(t,omega,gamma,g) - (1/self.cond_var(torch.zeros_like(T),T,omega,gamma,g)) * (Sig_zx[:,:,None] * Sig_zx[:,None,:])
 
 
@@ -246,21 +248,18 @@ class FractionalSchrödingerBridge(nn.Module):
 
         return mu_bar + noise
 
-    def score_fn(self,xT,z,T,t,omega,gamma,g):
+    def score_fn(self,x,Y,xT,T, t, omega, gamma, g):
 
-        mu = self.cond_mean(z,t,T,omega,gamma,g)
+        mu = self.cond_mean(x,Y,t,T,omega,gamma,g)
         var  = self.cond_var(t,T,omega,gamma,g)
-
-        #zeta = g * (1-torch.exp(-gamma*(T -t)))
-
-        score_x = (xT- mu[:,None])/(var) 
-        scale = torch.ones(omega.shape[1]+1)
-        scale[1:] = omega * self.zeta(t,T,gamma,g) 
-
-        return scale * score_x
+        
+        score_x = (xT- mu)/(var) 
+        scale = torch.ones(1,1,omega.shape[1]+1)
+        scale[:,:,1:] = omega[:,None,:] * zeta(t,T,gamma,g) 
+        return scale * score_x[:,:,None]
 
     def input_transform(self, x,Y,t,T,omega,gamma,g):
-        return x - self.cond_mean(x,Y,t,T,omega,gamma,g)
+        return self.cond_mean(x,Y,t,T,omega,gamma,g)
 
     def mean_scale(self, t):
         return torch.exp(self.integral(t))
@@ -286,9 +285,9 @@ class FractionalSchrödingerBridge(nn.Module):
         z1[:,:,:,:,0] = z1[:,:,:,:,0] + self.g(t)[:,None,None,None] * torch.sum(self.omega[:,None,None,None,:]*z1[:,:,:,:,1:],dim=-1)
         return z1
 
-    def G(self,t):
-        M=1 if len(t.shape)==0 else t.shape[0]
-        return torch.cat([(self.sum_omega * self.g(t))[:,None,None,None,None],torch.ones(M,self.K,device=t.device)[:,None,None,None,:]],dim=-1)
+    # def G(self,t):
+    #     M=1 if len(t.shape)==0 else t.shape[0]
+    #     return torch.cat([(self.sum_omega * self.g(t))[:,None,None,None,None],torch.ones(M,self.K,device=t.device)[:,None,None,None,:]],dim=-1)
 
     def prior_logp(self,z):
         if self.K==0:

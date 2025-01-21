@@ -90,13 +90,12 @@ class BrownianBridgeTransform(BaseTransform):
             # data.pos_t = self.dif.pinned_marginals(t, data.aug_pos_0, data.aug_pos_T)
             # data.t = t
             data.mode = 'augmented'
-            
-            z = dif.sample_pinned(t, dif.T, data.pos_0, data.pos_T, dif.omega, dif.gamma, dif.g)
+            z = dif.sample_pinned(t, dif.T, data.pos_0, data.pos_T, dif.omega, dif.gamma, dif.g_max)
             x = z[:,:,0]
             Y = z[:,:,1:]
-            data.pos_t = dif.input_transform(x,Y,t,dif.T,dif.omega, dif.gamma,dif.g)
+            data.pos_t = dif.input_transform(x,Y,t,dif.T,dif.omega, dif.gamma,dif.g_max)
             data.t = t
-            data.cond_var_t = dif.cond_var(t,dif.T,dif.omega,dif.gamma,dif.g)[:,None]
+            data.cond_var_t = dif.cond_var(t,dif.T,dif.omega,dif.gamma,dif.g_max)[:,None]
         else:
             data.mode = 'brownian'
             data.pos_t = sample_from_brownian_bridge(g=self.dif.g, t=t, x_0=data.pos_0, x_T=data.pos_T, t_min=0.0, t_max=1.0)

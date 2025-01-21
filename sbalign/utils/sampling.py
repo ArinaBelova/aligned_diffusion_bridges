@@ -8,15 +8,11 @@ from sbalign.training.diffusivity import fractional_input_transform, matrix_vect
 def sampling(pos_0, model, diffusivity, inference_steps, t_schedule, apply_score=False, return_traj: bool=False):
 
     model.eval()
-    g = diffusivity.g
 
     if diffusivity.K > 0:
         pos = torch.cat([pos_0[:,:,None],torch.zeros(pos_0.shape[0], pos_0.shape[1], diffusivity.K)],dim=-1)
-
-        #print("pos X", pos[:,:,0]) itäs fine 
-
-        y_T = diffusivity.sample(diffusivity.T*torch.ones(pos_0.shape[0],1), c=2, h=1, w=1)[:,:,1:]
         trajectory = np.zeros((inference_steps+1, *pos_0.shape, diffusivity.K+1))
+
     else:
         pos = pos_0.clone()
         trajectory = np.zeros((inference_steps+1, *pos_0.shape))   
@@ -27,84 +23,33 @@ def sampling(pos_0, model, diffusivity, inference_steps, t_schedule, apply_score
 
     with torch.no_grad():
         for t_idx in range(1, inference_steps+1):
-            
-            #print("t_schedule ", t_schedule[-1])
-            t = t_schedule[t_idx]
-            #print("t", t)
+
             if diffusivity.K > 0:
-
-                nn_input, cond_var = fractional_input_transform(pos, t[None,None], y_T, diffusivity)
-                y_t = pos[:,:,1:]
-
-                #print("pos Y1", y_t)
-
-
-                cond_std = torch.sqrt(cond_var) #* 1000
-                # print("original cond_std ", cond_std)
-                #cond_std = 1
-
-                #print('cond_std',torch.max(cond_std),torch.min(cond_std))
-            # _, _, _, _, eta_Tt, sig_Tt, tau_Tt = diffusivity.marginal_stats(1.0 - t)
-
-            #data.cond_var_t =  (sig_Tt - tau_Tt)[:,0,0]
-            #varphi = dif.g(data.t) * dif.omega * dif.gamma * (1.0 - data.t) + torch.exp(-dif.gamma * (1.0 - data.t))
-            #data.pos_t = data.pos_t[:,:,0] + torch.sum(eta_Tt[:,0,0] * data.aug_pos_T[:,:,1:] + varphi[:,None,:] * data.pos_t[:,:,1:], dim=-1)
-                #cond_std=1.0
-                print("nn_input,", nn_input)
-                #print("model.run_drift(nn_input, torch.ones(nn_input.shape[0]).to(DEVICE)* t)", model.run_drift(nn_input, torch.ones(nn_input.shape[0]).to(DEVICE)* t))
                 
-                # From the step 1 this is huge:
-                #cond_std = 1.0
-                drift_pos_x = model.run_drift(nn_input, torch.ones(nn_input.shape[0]).to(DEVICE)* t)
+                t = t_schedule[t_idx][None,None]
+                T = diffusivity.T
 
-                print("drift_pos_x", drift_pos_x)
+                x = pos[:,:,0]
+                Y = pos[:,:,1:]
+                F = diffusivity.F_t[None,None,:,:]
+                G = diffusivity.G_t[None,None,:]
+                GG = G[:,:,:,None] * G[:,:,None,:]
+                dw = torch.sqrt(dt) * torch.randn_like(x)[:,:,None]
 
-                varphi = torch.exp(-diffusivity.gamma * (1.0 - t[None,None]))
-                #print('drift_pos_x',drift_pos_x.shape)
-                #print('varphi ',varphi.shape)
-                cond_score = torch.cat([drift_pos_x[:,:,None], -varphi[:,None,:] * drift_pos_x[:,:,None]], dim=-1)
-                #print('cond_score',cond_score)
-                zeros = torch.zeros_like(nn_input)[:, :, None]
-                _,_, _, cov_yy, _, _, _ = diffusivity.marginal_stats(t[None,None])
-                
-                nabla_y_t = torch.linalg.solve(cov_yy, y_t.unsqueeze(-1)).squeeze(-1)
+                pos_transform = diffusivity.input_transform(x,Y,t,T,diffusivity.omega, diffusivity.gamma,diffusivity.g_max)
+                drift_pos_x = model.run_drift(pos_transform, torch.ones(pos_transform.shape[0]).to(DEVICE)* t[0,0])
+                scale = torch.ones(1,1,diffusivity.omega.shape[1]+1)
+                scale[:,:,1:] = -diffusivity.omega[:,None,:] * diffusivity.zeta(t,T,diffusivity.gamma,diffusivity.g_max)
+                drift_pos = scale * drift_pos_x[:,:,None]
 
-                #print('nabla_y_t', nabla_y_t)
-                score_y_t = -torch.cat([zeros, nabla_y_t], dim=-1)
-                #print('score_y_t',score_y_t.shape)
-                drift_pos = cond_score + score_y_t
-                # print('cond_score',torch.min(cond_score), torch.max(cond_score))
-                # print('score_y_t',torch.min(score_y_t), torch.max(score_y_t))
-                # print("drift_pos", drift_pos)
-                
+                dpos = (matrix_vector_mp(F, pos) + matrix_vector_mp(GG, drift_pos))*dt + G * dw
             else:
+                t = t_schedule[t_idx]
+                g = diffusivity.g
                 drift_pos = model.run_drift(pos, torch.ones(pos.shape[0]).to(DEVICE)* t)
-
-            if apply_score:
-                assert False, "Must pass x_T as parameter of the function"
-                # torch.stack([torch.ones(pos.shape[0], device=DEVICE)*5, pos[:,1]], axis=1)
-                # drift_pos = drift_pos + model.run_doobs_score(pos, ..., torch.ones(pos.shape[0]).to(DEVICE)* t)
-            if diffusivity.K > 0:
-                FZ = diffusivity.f(pos[:,:,None,None,:] ,t*torch.ones(pos.shape[0],))[:,:,0,0,:]
-                G = diffusivity.G(t[None])[:,:,0,0,:]
-                GG = (G[:,:,:,None] * G[:,:,None,:])
-                diffusion = G * torch.randn_like(pos[:,:,0])[:,:,None] * torch.sqrt(dt)
-                #print('diffusion',diffusion.shape)
-            
-                #print('GG',GG.shape)
-                # print("FZ", FZ) # fucked 
-                # print("matrix_vector_mp(GG, drift_pos)", matrix_vector_mp(GG, drift_pos)) # fucked from the beginning
-                # print("diffusion", diffusion) #ok
-                dpos = (FZ + matrix_vector_mp(GG, drift_pos)) * dt + diffusion
-                #print("dpos", dpos)
-
-            else:
                 diffusion = g(t) * torch.randn_like(pos) * torch.sqrt(dt)
-
                 dpos = np.square(g(t)) * drift_pos * dt + diffusion
             
-            #print("pos", pos)
-            #print("dpos", dpos)
             pos = pos + dpos
             
             trajectory[t_idx] = pos.cpu()

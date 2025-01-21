@@ -29,7 +29,8 @@ def loss_function_sbalign(
         t_diff = (beta(g, 1, steps_num) - beta(g, data.t, steps_num)).to(DEVICE)
 
     x_diff = (data.pos_T - data.pos_t)
-    
+
+    assert torch.max(t_diff)>0, "Can not have zero variance"
 
     bb_drift_true = (x_diff) / t_diff
     #print("bb_drift_true ", bb_drift_true)
@@ -157,7 +158,7 @@ def loss_function_conf(
 
 def loss_fn_from_args(args):
 
-    g = get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity).g
+    g = get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K).g
 
     if args.task == "synthetic":
         loss_fn_base = loss_function_sbalign
