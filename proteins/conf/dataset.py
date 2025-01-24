@@ -184,21 +184,70 @@ class ProteinConfDataset(Dataset):
 # -------- Transforms -----------------
 
 
-class BrownianBridgeTransform(BaseTransform):
+# class BrownianBridgeTransform(BaseTransform):
     
-    def __init__(self, g):
-        self.g = g
+#     def __init__(self, g):
+#         self.g = g
+
+#     def __call__(self, data):
+#         if data is None:
+#             return None
+#         t = np.random.uniform()
+#         return self.apply_transform(data=data, t=t)
+    
+#     def apply_transform(self, data, t):
+#         print(f"BEFORE THE TRANSFORM DATA: {data.pos_T.shape}") # torch.Size([203, 3])
+#         #print(f"BEFORE THE TRANSFORM time shape is {t.shape}") # 0   
+#         data.t = t * torch.ones(data.num_nodes)
+#         data.pos_t = sample_from_brownian_bridge(g=self.g.g, t=t, x_0=data.pos_0, x_T=data.pos_T)
+        
+#         print(f"AFTER THE TRANSFORM DATA: {data.pos_t.shape}", flush=True)
+#         print(f"AFTER THE TRANSFORM TIME: {data.t.shape}", flush=True)
+#         return data
+
+
+class BrownianBridgeTransform(BaseTransform):
+
+    def __init__(self, dif):
+
+        self.dif = dif
 
     def __call__(self, data):
         if data is None:
             return None
         t = np.random.uniform()
         return self.apply_transform(data=data, t=t)
-    
-    def apply_transform(self, data, t):
-        data.t = t * torch.ones(data.num_nodes)
-        data.pos_t = sample_from_brownian_bridge(g=self.g, t=t, x_0=data.pos_0, x_T=data.pos_T)
 
+    def apply_transform(self, data, t):
+        print(f"BEFORE THE TRANSFORM DATA: {data.pos_T.shape}") # torch.Size([203, 3])
+        #print(f"BEFORE THE TRANSFORM time shape is {t.shape}") # 0
+
+        # assert (data.pos_0[:,1] == data.pos_T[:,1]).all(), (data.pos_0[:,1], data.pos_T[:,1])
+        dif = self.dif
+        if dif.K>0:
+            # data.mode = 'augmented'
+            # data.aug_pos_0 = torch.cat([data.pos_0[:,:,None],torch.zeros(data.pos_0.shape[0],data.pos_0.shape[1],self.dif.K)],dim=-1)
+
+            # #TODO: do sampling for Ys differently AND allow for different data dimension 
+            # y_T = self.dif.sample(self.dif.T*torch.ones_like(t), c=2, h=1, w=1)[:,:,1:]
+            # data.aug_pos_T = torch.cat([data.pos_T[:,:,None],y_T],dim=-1)
+            # data.pos_t = self.dif.pinned_marginals(t, data.aug_pos_0, data.aug_pos_T)
+            # data.t = t
+            data.mode = 'augmented'
+            z = dif.sample_pinned(t, dif.T, data.pos_0, data.pos_T, dif.omega, dif.gamma, dif.g_max)
+            x = z[:,:,0]
+            Y = z[:,:,1:]
+            data.pos_t = dif.input_transform(x,Y,t,dif.T,dif.omega, dif.gamma,dif.g_max)
+            data.t = t * torch.ones(data.num_nodes) #t
+            data.cond_var_t = dif.cond_var(t,dif.T,dif.omega,dif.gamma,dif.g_max)[:,None]
+        else:
+            data.mode = 'brownian'
+            data.pos_t = sample_from_brownian_bridge(g=self.dif.g, t=t, x_0=data.pos_0, x_T=data.pos_T, t_min=0.0, t_max=1.0)
+            #data.aug_pos_0 = data.pos_0
+            #data.aug_pos_T = data.pos_T
+            data.t = t * torch.ones(data.num_nodes) #t
+
+        print(f"AFTER THE TRANSFORM DATA: {data.pos_t.shape}", flush=True)
         return data
 
 
@@ -218,9 +267,11 @@ def construct_transform(args):
         return None
 
     if args.transform == "brownian_bridge":
-        g_fn = get_diffusivity_schedule(schedule=args.diffusivity_schedule, 
-                                        g_max=args.max_diffusivity)
-        transform = BrownianBridgeTransform(g=g_fn)
+        dif = get_diffusivity_schedule(schedule=args.diffusivity_schedule, 
+                                        g_max=args.max_diffusivity,
+                                        H = args.H,
+                                        K = args.K)
+        transform = BrownianBridgeTransform(dif)
         return transform
     else:
         raise ValueError(f" Transform of type {args.transform} is not supported.")
