@@ -1,4 +1,4 @@
-name: sbalign_test
+name: sbalign
 channels:
   - pytorch
   - defaults
@@ -22,8 +22,4 @@ dependencies:
     - seaborn
     - scikit-learn
     - wandb
-    - torch_scatter
-    - torch_sparse
-    - torch_cluster
     - e3nn
-    - torch_geometric

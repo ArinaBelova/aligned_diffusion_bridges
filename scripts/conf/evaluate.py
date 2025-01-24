@@ -8,6 +8,11 @@ import numpy as np
 import torch
 from torch_geometric.loader import DataLoader
 
+import os
+os.chdir("/home/fe/belova/projects/bridges/aligned_diffusion_bridges") 
+import sys
+sys.path.append(os.getcwd())
+
 from sbalign.data import ListDataset
 from sbalign.utils.ops import to_numpy
 from sbalign.utils.sb_utils import get_diffusivity_schedule

@@ -6,6 +6,17 @@ import numpy as np
 import copy
 import math
 
+#######
+#  Hack for the server to avoid the horrible setup.py script
+import os
+os.chdir("/home/fe/belova/projects/bridges/aligned_diffusion_bridges") 
+import sys
+sys.path.append(os.getcwd())
+
+# for key, value in os.environ.items():
+#     print(f"{key}={value}")
+#######
+
 from proteins.conf.dataset import build_data_loader
 from proteins.conf.models import build_model_from_args
 
@@ -30,6 +41,7 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
     logs = {'val_loss': math.inf, "val_inference_rmsd": math.inf}
 
     for epoch in range(args.n_epochs):
+        print(f"Epoch #{epoch + 1}")
         log_dict = {}
         
         train_losses = train_epoch_sbalign(

@@ -3,9 +3,9 @@ aggr: mean
 center_conformations: true
 center_max_radius: 30.0
 config: null
-data_dir: data
+data_dir: sbalign/data
 dataset: d3pm
-diffusivity_schedule: constant
+diffusivity_schedule: constant # fbb
 distance_embed_dim: 32
 drift_weight: 1.0
 dropout_p: 0.2
@@ -26,12 +26,14 @@ log_dir: logs
 log_every: 10
 lr: 0.001
 max_diffusivity: 1.0
+H: 0.5
+K: 0
 max_distance: 80.0
 max_neighbors: 40
 max_radius: 40.0
 model_name: tensor-prod
 n_conv_layers: 3
-n_epochs: 10000
+n_epochs: 1 #10000
 n_s: 30
 n_v: 10
 node_fdim: 145
@@ -41,7 +43,7 @@ optim_name: adamw
 reg_weight_T: 1.0
 reg_weight_t: 10.0
 resolution: c_alpha
-run_name: CONF_TP_MODEL-gia1ordl
+run_name: fixed #CONF_TP_MODEL-gia1ordl
 samples_per_protein: 10
 samples_per_protein_train: 10
 scheduler: plateau
