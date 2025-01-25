@@ -63,7 +63,7 @@ def beta(g, ts, steps_num):
         ts = ts.cpu().numpy()
     elif isinstance(ts, int):
         ts = [ts]
-        
+        beta
     beta_t = torch.zeros((len(ts), 1))
 
     for i, t in enumerate(ts):

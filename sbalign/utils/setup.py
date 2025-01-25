@@ -27,7 +27,7 @@ def wandb_setup(args):
     wandb.init(
         id=run_id,
         project="sbalign",
-        #entity=args.wandb_entity,
+        entity=args.wandb_entity,
         group=args.group_name,
         name=run_id,
         config=vars(args),

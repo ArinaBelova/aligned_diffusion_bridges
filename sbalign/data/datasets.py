@@ -95,7 +95,7 @@ class BrownianBridgeTransform(BaseTransform):
             Y = z[:,:,1:]
             data.pos_t = dif.input_transform(x,Y,t,dif.T,dif.omega, dif.gamma,dif.g_max)
             data.t = t
-            data.cond_var_t = dif.cond_var(t,dif.T,dif.omega,dif.gamma,dif.g_max)[:,None]
+            data.cond_var_t = dif.cond_var(t,dif.T,dif.omega,dif.gamma,dif.g_max)
         else:
             data.mode = 'brownian'
             data.pos_t = sample_from_brownian_bridge(g=self.dif.g, t=t, x_0=data.pos_0, x_T=data.pos_T, t_min=0.0, t_max=1.0)

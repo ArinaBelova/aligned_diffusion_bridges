@@ -33,15 +33,12 @@ def sampling(pos_0, model, diffusivity, inference_steps, t_schedule, apply_score
                 Y = pos[:,:,1:]
                 F = diffusivity.F_t[None,None,:,:]
                 G = diffusivity.G_t[None,None,:]
-                GG = G[:,:,:,None] * G[:,:,None,:]
+                GG = diffusivity.G_t[None,None,:,None] * diffusivity.G_t[None,None,None,:]
                 dw = torch.sqrt(dt) * torch.randn_like(x)[:,:,None]
 
                 pos_transform = diffusivity.input_transform(x,Y,t,T,diffusivity.omega, diffusivity.gamma,diffusivity.g_max)
                 drift_pos_x = model.run_drift(pos_transform, torch.ones(pos_transform.shape[0]).to(DEVICE)* t[0,0])
-                scale = torch.ones(1,1,diffusivity.omega.shape[1]+1)
-                scale[:,:,1:] = -diffusivity.omega[:,None,:] * diffusivity.zeta(t,T,diffusivity.gamma,diffusivity.g_max)
-                drift_pos = scale * drift_pos_x[:,:,None]
-
+                drift_pos = diffusivity.score(drift_pos_x,t,T,diffusivity.omega, diffusivity.gamma,diffusivity.g_max)
                 dpos = (matrix_vector_mp(F, pos) + matrix_vector_mp(GG, drift_pos))*dt + G * dw
             else:
                 t = t_schedule[t_idx]

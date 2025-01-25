@@ -14,8 +14,6 @@ import einops
 from . optimal_weights import omega_optimized, gamma_by_gamma_max, gamma_by_r, gamma_by_range
 
 
-   
-
 def constant_g(g_max):
     return ConstantDiffusivitySchedule(g_max)
     #return np.ones_like(t) * g_max
@@ -105,7 +103,25 @@ class FractionalSchrödingerBridge(nn.Module):
         self.register_buffer("gamma_j", self.gamma[:, None, :].clone())
         self.update_omega(omega,A=A,b=b)
 
-        self.g_max =  torch.tensor(g_max)#/torch.sum(self.omega)
+        omega_i = self.omega[:,None,:].clone()
+        omega_j = self.omega[:,:,None].clone()
+        gamma_i = self.gamma[:,None,:].clone()
+        gamma_j = self.gamma[:,:,None].clone()
+        
+        normalize_variance = False
+
+        #only valid for T=1
+        if normalize_variance:
+            norm_constant = torch.sum((self.omega[:,None,:] * self.omega[:,:,None])/(self.gamma[:,None,:]+self.gamma[:,:,None]) * (1-torch.exp(-(self.gamma[:,None,:]+self.gamma[:,:,None])))).item()
+        else:
+            norm_constant=1.0
+        
+        print(f'normalize variance with {norm_constant}')
+        self.g_max =  torch.tensor(g_max/norm_constant)
+        print('dtype',self.g_max.dtype)
+        print(f'g_max={g_max}')
+
+        #self.g_max =  torch.tensor(g_max)
 
         if self.K>0:
             F = torch.zeros(K+1,K+1)
@@ -138,215 +154,273 @@ class FractionalSchrödingerBridge(nn.Module):
     # def g(self,t):
     #     return self.g_max
     
-    def cond_mean(self,x,Y,t,T,omega,gamma,g):
+    def zeta(self,s,t,gamma,g):
 
+        # expects s,t of shape (batch_size1,batch_size2,1) and s<=t
+        # expects omega and gamma of shape (1,1,K)
+
+        return g*(torch.exp(-gamma*(t-s))-1)
+
+    def meanX(self,s,t,x,Y,omega,gamma,g):
+
+        # compute E[X(t)|Z_s=z) with s<t - Z_s = (x,Y) 
+        # mean of X_T conditioned on Z_t = (x,Y)
+
+        s = s[:,:,None]
         t = t[:,:,None]
-        T = T[:,:,None]
         gamma = gamma[:,None,:]
         omega = omega[:,None,:]
 
-        return x - g * torch.sum(omega*(1-torch.exp(-gamma*(T -t)))*Y,dim=-1)
+        weight = omega * self.zeta(s,t,gamma,g) 
+        y_part = (torch.sum(weight*Y, dim=-1)) 
+
+        return x + y_part
+
+    def meanY(self,s,t,gamma):
+
+        # compute E[Y(t)|Z_s=z) with s<t 
+        # mean of X_T conditioned on Z_t = (x,Y)
+
+        s = s[:,:,None]
+        t = t[:,:,None]
+        gamma = gamma[:,None,:]
+
+        return torch.exp(-gamma*(t-s)) * Y
+
+    def meanZ(self,s,t,x,Y,omega,gamma,g):
+
+        mean_x = self.meanX(s,t,x,Y,omega,gamma,g)
+        mean_y = self.meanY(s,t,gamma)
+    
+        return torch.cat([mean_x.unsqueeze(-1),mean_y],dim=-1)
     
     def cond_var(self,t,T,omega,gamma,g):
+                    
+            # compute cov(X(t),X(t)|Z_s=z) with s<t 
+            # expects s,t of shape (batch_size1,batch_size2,)
+            # expects omega,gamma of shape (1,K)
 
-        t = t[:,:,None]
-        T = T[:,:,None]
+            t = t[:,:,None,None] 
+            T = T[:,:,None,None]
 
-        omega_i = omega[:,None,:]
-        omega_j = omega[:,:,None]
-        gamma_i = gamma[:,None,:]
-        gamma_j = gamma[:,:,None]
+            return self.covX(t,T,T, omega, gamma, g)
+    
+    def covX(self,s,t,T, omega, gamma, g):
 
-        return g * torch.sum((omega_i * omega_j)/(gamma_i+gamma_j) * (1-torch.exp(-(gamma_i+gamma_j)*(T-t))),dim=(1,2))
+        # compute cov(X(t),X(T)|Z_s=z) with s<t<=T 
+        # expects s,t,T of shape (batch_size1,batch_size2,1,1)
+        # expects omega,gamma of shape (1,K)
 
-    def zeta(self,t,T,gamma,g):
-
-        t = t[:,:,None]
-        T = T[:,:,None]
-        gamma = gamma[:,None,:] 
-        
-        return g * (1-torch.exp(-gamma*(T -t)))
-
-    def covX(self,s,t, omega, gamma, g):
-
-        # s<=t is assumed
-
-        s = s[:,:,None] 
-        t = t[:,:,None]
-
-        omega_ij = omega[:,:,None]*omega[:,None,:]
-        gamma_i = gamma[:,:,None]
-        gamma_j = gamma[:,None,:]
+        omega_ij = omega[:,None,:,None]*omega[:,None,None,:]
+        gamma_i = gamma[:,None,:,None]
+        gamma_j = gamma[:,None,None,:]
         gamma_ij =  gamma_i + gamma_j
 
-        s = (omega_ij / gamma_ij) * torch.exp(-t*gamma_j - s*gamma_i) * (torch.exp(s*(gamma_j + gamma_i)) -1.0)
+        weight = omega_ij/ gamma_ij
 
-        return g**2 * (torch.sum(s,axis=(1,2)))
+        S = weight * (torch.exp(t*gamma_ij) -torch.exp(s*(gamma_ij))) * torch.exp(-T*gamma_j - t*gamma_i) 
 
-    def covYX(self,s,t, omega, gamma, g):
+        return g**2 * (torch.sum(S,axis=(2,3)))
 
-        # s<=t is assumed
+    def covYX(self,s,t,T, omega, gamma, g):
 
-        s = s[:,:,None] 
-        t = t[:,:,None]
+        # compute cov(Y(t),X(T)|Z_s=z) with s<t<=T 
+        # expects s,t,T of shape (batch_size1,batch_size2,1,1)
+        # expects omega,gamma of shape (1,K)
 
-        omega_k = omega[:,None,:]
-        gamma_k = gamma[:,None,:]
-        gamma_l = gamma[:,:,None]
-        s = (omega_k / (gamma_l+gamma_k)) * torch.exp(-t*gamma_k - s*gamma_l) * (torch.exp(s*(gamma_l+gamma_k))-1.0)
+        gamma_l = gamma[:,None,:,None] #dim of Y_l
+        omega_k = omega[:,None,None,:]
+        gamma_k = gamma[:,None,None,:]
 
-        return g * torch.sum(s,axis=2)
+        weight = omega_k/(gamma_l+gamma_k) #dim of omega_k in X
+        S = weight *(torch.exp(t*(gamma_l+gamma_k)) -1)*torch.exp(-t*gamma_l-T*gamma_k)
 
-    def covY(self,t,gamma,eps=1e-4):
+        return g * torch.sum(S,axis=3)
 
-        K = gamma.shape[1]
-        t = t[:,:,None]
+    def covY(self,s,t,T, gamma):
 
-        gamma_ij = gamma[:,:,None] + gamma[:,None,:]
+        # compute cov(Y(t),Y(T)|Z_s=z) with s<t<=T 
+        # expects s,t,T of shape (batch_size1,batch_size2,1,1)
+        # expects omega,gamma of shape (1,K)
 
-        Sig_y = (1 - torch.exp(-t*(gamma_ij)))/(gamma_ij)
+        gamma_i = gamma[:,None,:,None]
+        gamma_j = gamma[:,None,None,:]
+        gamma_ij =  gamma_i + gamma_j
 
-        I_eps = torch.eye(K, K)[None, :, :] * torch.ones((t.shape[0], K, K)) * eps * torch.exp(-2 * gamma * t[:,:,0])[:, :, None]
+        return (torch.exp(-T*gamma_j-t*gamma_i)*(torch.exp(t*gamma_ij)-torch.exp(s*gamma_ij)))/gamma_ij
 
+    def covZ(self,t,T, omega, gamma, g, s=None, eps=1e-4):
 
-        return Sig_y + I_eps
+        # compute cov(X(t),X(T)|Z_s=z) with s<t<=T 
+        # expects s,t,T of shape (batch_size1,batch_size2,)
+        # expects omega,gamma of shape (1,K)
 
-    def covZ(self,t,omega,gamma,g,eps=1e-4):
+        t = t[:,:,None,None] 
+        T = T[:,:,None,None]
+        s = torch.zeros_like(t) if s is None else s[:,:,None,None]
+
         K = omega.shape[1]
-        bs = t.shape[0]
-        Sig = torch.zeros(bs, K+1,K+1)
+        bs1 = t.shape[0]
+        bs2 = t.shape[1]
+        Sig = torch.zeros(bs1, bs2, K+1,K+1)
         
-        Sig_xy = self.covYX(t,t, omega, gamma, g)
-        Sig[:,0,0] = self.cond_var(torch.zeros_like(t),t,omega,gamma,g)
-        Sig[:,1:,0] = Sig_xy
-        Sig[:,0,1:] = Sig_xy
-        Sig[:,1:,1:] = self.covY(t,gamma,eps=eps)
+        Sig_xy = self.covYX(s,t,T, omega, gamma, g)
+        Sig[:,:,0,0] = self.covX(s,t,T, omega, gamma, g)
+        Sig[:,:,1:,0] = Sig_xy
+        Sig[:,:,0,1:] = Sig_xy
+        Sig[:,:,1:,1:] = self.covY(s,t,T, gamma)
 
-        assert ((torch.diag(Sig[0])>0).all()), f'Found negativ variance: \n {torch.diag(Sig[0])<0}'
+        # I_eps = torch.eye(K, K)[None, :, :] * torch.ones((bs, K, K)) * eps * torch.exp(-2 * gamma * t[:,:,0])[:, :, None]
+        # Sig[:,1:,1:] = Sig[:,1:,1:] + I_eps
+        # Sig[:,0,0] += eps
+
+        Sig = Sig + torch.eye(K+1, K+1)[None,None, :, :] * torch.ones((bs1, bs2, K+1, K+1)) * eps
+
+        assert ((torch.diag(Sig[0,0])>0).all()), f'Found negativ variance: \n {torch.diag(Sig[0,0])<0}'
 
         return Sig
 
     def sample_pinned(self,t,T,x0,xT,omega,gamma,g):
 
         K = omega.shape[1]
-        bs = x0.shape[0]
+        bs1 = t.shape[0]
+        bs2 = t.shape[1]
+
+        t = t[:,:,None,None] 
+        T = T[:,:,None,None]
+        s = torch.zeros_like(t)
 
         mu = torch.zeros(x0.shape+(K+1,))
         mu[:,:,0] = x0
 
-        Sig_zx = torch.zeros(bs,K+1)
-        Sig_zx[:,0] = self.covX(t,T,omega,gamma,g)
-        Sig_zx[:,1:] = self.covYX(t,T,omega,gamma,g)
+        Sig_zx = torch.zeros(bs1,bs2,K+1)
+        
+        Sig_zx[:,:,0] = self.covX(s,t,T, omega, gamma, g)
+        Sig_zx[:,:,1:] = self.covYX(s,t,T, omega, gamma, g)
 
-        mu_bar = mu + (1/self.cond_var(torch.zeros_like(T),T,omega,gamma,g)) * Sig_zx[:,None,:] * ((xT-x0)[:,:,None])
-        Sig_bar = self.covZ(t,omega,gamma,g) - (1/self.cond_var(torch.zeros_like(T),T,omega,gamma,g)) * (Sig_zx[:,:,None] * Sig_zx[:,None,:])
+        var = self.covX(s,T,T, omega, gamma, g)
+        mu_bar = mu + (1/var[:,:,None]) * Sig_zx * ((xT-x0)[:,:,None])
 
+        Sig_bar = self.covZ(t[:,:,0,0],t[:,:,0,0],omega,gamma,g) - (1/var[:,:,None,None]) * (Sig_zx[:,:,:,None] * Sig_zx[:,:,None,:])
 
-        assert (Sig_bar.transpose(1, 2) == Sig_bar).all(), f'Covariance is not symmetric'
+        Sig_bar_flat = einops.rearrange(Sig_bar, 'bs1 bs2 K L -> (bs1 bs2) K L', bs1=bs1, bs2=bs2)
+        assert (Sig_bar_flat.transpose(1, 2) == Sig_bar_flat).all(), f'Covariance is not symmetric'
 
-        noise = sample_from_batch_multivariate_normal(Sig_bar,c=x0.shape[1],h=1,w=1,batch_size=bs, aug_dim=K+1)[:,:,0,0,:]
+        noise_flat = sample_from_batch_multivariate_normal(Sig_bar_flat,c=1,h=1,w=1,batch_size=int(bs1*bs2), aug_dim=K+1)[:,0,0,0,:]
+        noise = einops.rearrange(noise_flat, '(bs1 bs2) K -> bs1 bs2 K', bs1=bs1, bs2=bs2)
 
         return mu_bar + noise
 
-    def score_fn(self,x,Y,xT,T, t, omega, gamma, g):
+    def input_transform(self,x,Y,t,T,omega,gamma,g):
 
-        mu = self.cond_mean(x,Y,t,T,omega,gamma,g)
-        var  = self.cond_var(t,T,omega,gamma,g)
+        t = t[:,:,None]
+        T = T[:,:,None]
+        gamma = gamma[:,None,:]
+        omega = omega[:,None,:]
+
+        weight = omega * self.zeta(t,T,gamma,g) 
+        y_part = (torch.sum(weight*Y, dim=-1)) 
+
+        return x + y_part
+
+    def score(self, score_x, t,T, omega, gamma, g_max):
+
+        # expects the output of a score model of dimension (batch_size1,batch_size2)
+
+        omega = omega[:,None,:]
+        gamma = gamma[:,None,:]
+
+        scale = torch.ones(1,1,self.omega.shape[1]+1)
+        scale[:,:,1:] = omega * self.zeta(t,T, gamma, g_max)
         
-        score_x = (xT- mu)/(var) 
-        scale = torch.ones(1,1,omega.shape[1]+1)
-        scale[:,:,1:] = omega[:,None,:] * zeta(t,T,gamma,g) 
         return scale * score_x[:,:,None]
+    
+    # def mean_scale(self, t):
+    #     return torch.exp(self.integral(t))
 
-    def input_transform(self, x,Y,t,T,omega,gamma,g):
-        return self.cond_mean(x,Y,t,T,omega,gamma,g)
+    # def mean(self,x0,t):
+    #     c_t = self.mean_scale(t)[:,None,None,None,None]
+    #     bs,c,h,w = x0.shape
+    #     return torch.cat([(c_t*x0[:,:,:,:,None]),torch.zeros(bs,c,h,w,self.K,device=x0.device)],dim=-1)
 
-    def mean_scale(self, t):
-        return torch.exp(self.integral(t))
+    # def brown_moments(self,x0,t):
+    #     return self.mean_scale(t)[:,None,None,None]*x0, torch.sqrt(self.brown_var(t))[:,None,None,None]
 
-    def mean(self,x0,t):
-        c_t = self.mean_scale(t)[:,None,None,None,None]
-        bs,c,h,w = x0.shape
-        return torch.cat([(c_t*x0[:,:,:,:,None]),torch.zeros(bs,c,h,w,self.K,device=x0.device)],dim=-1)
+    # def augmented_var(self, t):
+    #     return torch.diagonal(self.cov(t), dim1=1, dim2=2)
 
-    def brown_moments(self,x0,t):
-        return self.mean_scale(t)[:,None,None,None]*x0, torch.sqrt(self.brown_var(t))[:,None,None,None]
+    # def forward_var(self, t):
+    #     return self.augmented_var(t)[:, 0]
 
-    def augmented_var(self, t):
-        return torch.diagonal(self.cov(t), dim1=1, dim2=2)
-
-    def forward_var(self, t):
-        return self.augmented_var(t)[:, 0]
-
-    def f(self,z0,t):
-        bs = t.shape[0]
-        F_t = torch.cat([self.mu(t)[:,None],-self.gamma.repeat(bs,1)],dim=-1)[:,None,None,None,:]
-        z1 = F_t * z0
-        z1[:,:,:,:,0] = z1[:,:,:,:,0] + self.g(t)[:,None,None,None] * torch.sum(self.omega[:,None,None,None,:]*z1[:,:,:,:,1:],dim=-1)
-        return z1
+    # def f(self,z0,t):
+    #     bs = t.shape[0]
+    #     F_t = torch.cat([self.mu(t)[:,None],-self.gamma.repeat(bs,1)],dim=-1)[:,None,None,None,:]
+    #     z1 = F_t * z0
+    #     z1[:,:,:,:,0] = z1[:,:,:,:,0] + self.g(t)[:,None,None,None] * torch.sum(self.omega[:,None,None,None,:]*z1[:,:,:,:,1:],dim=-1)
+    #     return z1
 
     # def G(self,t):
     #     M=1 if len(t.shape)==0 else t.shape[0]
     #     return torch.cat([(self.sum_omega * self.g(t))[:,None,None,None,None],torch.ones(M,self.K,device=t.device)[:,None,None,None,:]],dim=-1)
 
-    def prior_logp(self,z):
-        if self.K==0:
-            shape = z.shape
-            N = np.prod(shape[1:])
-            var_T = self.brown_var(self.T).detach().cpu().item()
-            logp = -N / 2. * np.log(2 * np.pi * var_T) - torch.sum(z ** 2, dim=(1, 2, 3)) / (2. * var_T)
-        else:
-            logp = self.terminal(z)
-        return logp
+    # def prior_logp(self,z):
+    #     if self.K==0:
+    #         shape = z.shape
+    #         N = np.prod(shape[1:])
+    #         var_T = self.brown_var(self.T).detach().cpu().item()
+    #         logp = -N / 2. * np.log(2 * np.pi * var_T) - torch.sum(z ** 2, dim=(1, 2, 3)) / (2. * var_T)
+    #     else:
+    #         logp = self.terminal(z)
+    #     return logp
 
-    def marginal_stats(self,t,batch=None):
+    # def marginal_stats(self,t,batch=None):
 
-        eps = self.pd_eps
-        mean = self.mean(batch, t) if batch is not None else None
-        cov = self.cov(t)
-        bs = cov.shape[0]
-        sigma_t = torch.squeeze(cov).clone().to(t.device)
+    #     eps = self.pd_eps
+    #     mean = self.mean(batch, t) if batch is not None else None
+    #     cov = self.cov(t)
+    #     bs = cov.shape[0]
+    #     sigma_t = torch.squeeze(cov).clone().to(t.device)
 
-        if bs==1:
-            sigma_t = sigma_t[None, :, :]
+    #     if bs==1:
+    #         sigma_t = sigma_t[None, :, :]
 
-        I_eps = torch.eye(self.aug_dim, self.aug_dim,device=t.device)[None, :, :] * torch.ones((t.shape[0],self.aug_dim, self.aug_dim),device=t.device)
-        I_eps[:,1:,1:] = I_eps[:,1:,1:] * (eps * torch.exp(-2 * self.gamma * t[:,None])[:,:,None])
-        I_eps[:, 0, 0] = 0.0
-        sigma_t = sigma_t + I_eps
+    #     I_eps = torch.eye(self.aug_dim, self.aug_dim,device=t.device)[None, :, :] * torch.ones((t.shape[0],self.aug_dim, self.aug_dim),device=t.device)
+    #     I_eps[:,1:,1:] = I_eps[:,1:,1:] * (eps * torch.exp(-2 * self.gamma * t[:,None])[:,:,None])
+    #     I_eps[:, 0, 0] = 0.0
+    #     sigma_t = sigma_t + I_eps
 
-        corr = sigma_t[:,1:,0].clone()
-        cov_yy = sigma_t[:,1:,1:].clone()
-        var_x = sigma_t[:,0,0].clone()
-        alpha = torch.linalg.solve(cov_yy,corr)
-        var_c = torch.sum(alpha*corr,dim=-1)
-        return sigma_t[:,None,None,None], mean, corr, cov_yy, alpha[:,None,None,None,:], var_x[:,None,None,None], var_c[:,None,None,None]
+    #     corr = sigma_t[:,1:,0].clone()
+    #     cov_yy = sigma_t[:,1:,1:].clone()
+    #     var_x = sigma_t[:,0,0].clone()
+    #     alpha = torch.linalg.solve(cov_yy,corr)
+    #     var_c = torch.sum(alpha*corr,dim=-1)
+    #     return sigma_t[:,None,None,None], mean, corr, cov_yy, alpha[:,None,None,None,:], var_x[:,None,None,None], var_c[:,None,None,None]
 
-    def compute_YiYj(self,t):
-        sum_gamma = self.gamma_i + self.gamma_j
-        return ((1-torch.exp(-t*sum_gamma))/sum_gamma)
+    # def compute_YiYj(self,t):
+    #     sum_gamma = self.gamma_i + self.gamma_j
+    #     return ((1-torch.exp(-t*sum_gamma))/sum_gamma)
 
-    def numpy_compute_YiYj(self,t):
-        gamma_i, gamma_j = self.gamma[0,:, None].cpu().numpy(), self.gamma[0,None, :].cpu().numpy()
-        return (1 - np.exp(- (gamma_i + gamma_j) * t.cpu().numpy())) / (gamma_i + gamma_j)
+    # def numpy_compute_YiYj(self,t):
+    #     gamma_i, gamma_j = self.gamma[0,:, None].cpu().numpy(), self.gamma[0,None, :].cpu().numpy()
+    #     return (1 - np.exp(- (gamma_i + gamma_j) * t.cpu().numpy())) / (gamma_i + gamma_j)
 
-    def func(self,t, S):
-        num_k = self.K
-        t = torch.as_tensor(t)
-        A = np.zeros((num_k + 1, num_k + 1))
-        A[0, 0] = 2 * self.mu(t).cpu().numpy()
-        A[0, 1:] = - 2 * (self.g(t) * self.omega[0] * self.gamma[0]).cpu().numpy()
-        A[1:, 1:] = np.diag((self.mu(t) - self.gamma[0]).cpu().numpy())
-        b = np.zeros(num_k + 1)
-        b[0] = (self.omega[0].cpu().numpy().sum() * self.g(t).cpu().numpy()) ** 2
-        b[1:] = self.g(t).cpu().numpy() * (
-                    self.omega[0].cpu().numpy().sum() - self.numpy_compute_YiYj(t) @ (self.omega[0] * self.gamma[0]).cpu().numpy())
+    # def func(self,t, S):
+    #     num_k = self.K
+    #     t = torch.as_tensor(t)
+    #     A = np.zeros((num_k + 1, num_k + 1))
+    #     A[0, 0] = 2 * self.mu(t).cpu().numpy()
+    #     A[0, 1:] = - 2 * (self.g(t) * self.omega[0] * self.gamma[0]).cpu().numpy()
+    #     A[1:, 1:] = np.diag((self.mu(t) - self.gamma[0]).cpu().numpy())
+    #     b = np.zeros(num_k + 1)
+    #     b[0] = (self.omega[0].cpu().numpy().sum() * self.g(t).cpu().numpy()) ** 2
+    #     b[1:] = self.g(t).cpu().numpy() * (
+    #                 self.omega[0].cpu().numpy().sum() - self.numpy_compute_YiYj(t) @ (self.omega[0] * self.gamma[0]).cpu().numpy())
 
-        return A @ S + b
+    #     return A @ S + b
 
-    def solve_cov_ode(self,t=0.0):
-        S_0 = np.zeros(self.K + 1)
-        self.approx_sigma = solve_ivp(self.func, (t, 1.), S_0, dense_output=True)
+    # def solve_cov_ode(self,t=0.0):
+    #     S_0 = np.zeros(self.K + 1)
+    #     self.approx_sigma = solve_ivp(self.func, (t, 1.), S_0, dense_output=True)
 
 #     @abstractmethod
 #     def mu(self,t):
@@ -554,7 +628,7 @@ def sample_from_batch_multivariate_normal(cov_matrix, c=2,h=1,w=1,batch_size=128
 
     # Ensure covariance matrix has shape [batch_size, dim, dim]
     assert cov_matrix.shape == (batch_size, aug_dim, aug_dim), "Covariance matrix must have shape [batch_size, dim, dim]"
-
+    
     # Zero mean for each distribution in the batch
     mean = torch.zeros(batch_size, aug_dim,device=device)
 
