@@ -45,3 +45,4 @@ sb_align/data/
 *.pdb;
 
 reproducibility/moon/model/*
+reproducibility/*
