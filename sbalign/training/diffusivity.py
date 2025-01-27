@@ -283,8 +283,11 @@ class FractionalSchrödingerBridge(nn.Module):
     def sample_pinned(self,t,T,x0,xT,omega,gamma,g):
 
         K = omega.shape[1]
+        print(f"IN DIFFUSIVITZ TIME SHAPE IS {t.shape}")
+
         bs1 = t.shape[0]
-        bs2 = t.shape[1]
+        bs2 = 1#t.shape[1]
+        D = x0.shape[1]
 
         t = t[:,:,None,None] 
         T = T[:,:,None,None]
@@ -306,8 +309,8 @@ class FractionalSchrödingerBridge(nn.Module):
         Sig_bar_flat = einops.rearrange(Sig_bar, 'bs1 bs2 K L -> (bs1 bs2) K L', bs1=bs1, bs2=bs2)
         assert (Sig_bar_flat.transpose(1, 2) == Sig_bar_flat).all(), f'Covariance is not symmetric'
 
-        noise_flat = sample_from_batch_multivariate_normal(Sig_bar_flat,c=1,h=1,w=1,batch_size=int(bs1*bs2), aug_dim=K+1)[:,0,0,0,:]
-        noise = einops.rearrange(noise_flat, '(bs1 bs2) K -> bs1 bs2 K', bs1=bs1, bs2=bs2)
+        noise_flat = sample_from_batch_multivariate_normal(Sig_bar_flat,c=D,h=1,w=1,batch_size=int(bs1*bs2), aug_dim=K+1)[:,:,0,0,:]
+        noise = einops.rearrange(noise_flat, '(bs1 bs2) D K -> bs1 bs2 D K', bs1=bs1, bs2=bs2)
 
         return mu_bar + noise
 
@@ -319,6 +322,8 @@ class FractionalSchrödingerBridge(nn.Module):
         omega = omega[:,None,:]
 
         weight = omega * self.zeta(t,T,gamma,g) 
+        print(f"weight shape: {weight.shape}")
+        print(f"Y shape is {Y.shape}")
         y_part = (torch.sum(weight*Y, dim=-1)) 
 
         return x + y_part

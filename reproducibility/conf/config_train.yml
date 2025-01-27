@@ -3,9 +3,9 @@ aggr: mean
 center_conformations: true
 center_max_radius: 30.0
 config: null
-data_dir: sbalign/data
+data_dir: sbalign/data_test
 dataset: d3pm
-diffusivity_schedule: constant # fbb
+diffusivity_schedule: fbb # fbb
 distance_embed_dim: 32
 drift_weight: 1.0
 dropout_p: 0.2
@@ -26,8 +26,8 @@ log_dir: logs
 log_every: 10
 lr: 0.001
 max_diffusivity: 1.0
-H: 0.5
-K: 0
+H: 0.1
+K: 5
 max_distance: 80.0
 max_neighbors: 40
 max_radius: 40.0

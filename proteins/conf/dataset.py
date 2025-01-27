@@ -215,13 +215,22 @@ class BrownianBridgeTransform(BaseTransform):
     def __call__(self, data):
         if data is None:
             return None
-        t = np.random.uniform()
+        
+        #t = np.random.uniform()
+
+        bs = data.pos_0.shape[0]
+        ch = data.pos_0.shape[1]
+        
+        print(f"BATCH SIZE IS {bs}")
+        print(f"CHANNEL DIM IS {ch}")
+
+        t = torch.rand((bs, 1))
+        t = t * torch.ones(ch)
+
         return self.apply_transform(data=data, t=t)
 
     def apply_transform(self, data, t):
-        print(f"BEFORE THE TRANSFORM DATA: {data.pos_T.shape}") # torch.Size([203, 3])
-        #print(f"BEFORE THE TRANSFORM time shape is {t.shape}") # 0
-
+        #print(f"BEFORE THE TRANSFORM DATA: {data.pos_T.shape}") # torch.Size([203, 3])
         # assert (data.pos_0[:,1] == data.pos_T[:,1]).all(), (data.pos_0[:,1], data.pos_T[:,1])
         dif = self.dif
         if dif.K>0:
@@ -234,18 +243,23 @@ class BrownianBridgeTransform(BaseTransform):
             # data.pos_t = self.dif.pinned_marginals(t, data.aug_pos_0, data.aug_pos_T)
             # data.t = t
             data.mode = 'augmented'
-            z = dif.sample_pinned(t, dif.T, data.pos_0, data.pos_T, dif.omega, dif.gamma, dif.g_max)
+            print(f"NUM NODES IS {data.num_nodes}")
+
+            #data.t = t * torch.ones(data.num_nodes) #t
+            data.t = t
+
+            print(f"shape that goes to the bloody function: {data.t.shape}")
+            z = dif.sample_pinned(data.t, dif.T, data.pos_0, data.pos_T, dif.omega, dif.gamma, dif.g_max)
             x = z[:,:,0]
             Y = z[:,:,1:]
-            data.pos_t = dif.input_transform(x,Y,t,dif.T,dif.omega, dif.gamma,dif.g_max)
-            data.t = t * torch.ones(data.num_nodes) #t
-            data.cond_var_t = dif.cond_var(t,dif.T,dif.omega,dif.gamma,dif.g_max)[:,None]
+            data.pos_t = dif.input_transform(x,Y,data.t,dif.T,dif.omega, dif.gamma,dif.g_max)
+            data.cond_var_t = dif.cond_var(data.t,dif.T,dif.omega,dif.gamma,dif.g_max)[:,None]
         else:
             data.mode = 'brownian'
+            data.t = t * torch.ones(data.num_nodes) #t
             data.pos_t = sample_from_brownian_bridge(g=self.dif.g, t=t, x_0=data.pos_0, x_T=data.pos_T, t_min=0.0, t_max=1.0)
             #data.aug_pos_0 = data.pos_0
             #data.aug_pos_T = data.pos_T
-            data.t = t * torch.ones(data.num_nodes) #t
 
         print(f"AFTER THE TRANSFORM DATA: {data.pos_t.shape}", flush=True)
         return data

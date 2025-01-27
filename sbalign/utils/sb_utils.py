@@ -95,7 +95,7 @@ def sample_from_brownian_bridge(g, t, x_0, x_T, t_min=0.0, t_max=1.0):
 
 # --------- Diffusivity Schedule ---------
 
-def constant_g(t, g_max):
+def constant_g(g_max):
     return ConstantDiffusivitySchedule(g_max)
     #return np.ones_like(t) * g_max
 
