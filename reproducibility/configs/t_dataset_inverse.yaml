@@ -24,7 +24,7 @@ h_dim: 32
 n_layers: 3
 activation: selu
 dropout_p: 0.1
-run_name: thtuefzsn
+run_name: uhtnaogjp
 n_epochs: 20
 use_grad_noise: false
 drift_weight: 1.0
