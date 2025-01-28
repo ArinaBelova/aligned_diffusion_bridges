@@ -156,7 +156,7 @@ class FractionalSchrödingerBridge(nn.Module):
     
     def zeta(self,s,t,gamma,g):
 
-        # expects s,t of shape (batch_size1,batch_size2,1) and s<=t
+        # expects s,t of shape (batch_size,1,1) and s<=t
         # expects omega and gamma of shape (1,1,K)
 
         return g*(torch.exp(-gamma*(t-s))-1)
@@ -164,6 +164,7 @@ class FractionalSchrödingerBridge(nn.Module):
     def meanX(self,s,t,x,Y,omega,gamma,g):
 
         # compute E[X(t)|Z_s=z) with s<t - Z_s = (x,Y) 
+        # expects t,s of shape (batch_size,1)
         # mean of X_T conditioned on Z_t = (x,Y)
 
         s = s[:,:,None]
@@ -176,9 +177,11 @@ class FractionalSchrödingerBridge(nn.Module):
 
         return x + y_part
 
-    def meanY(self,s,t,gamma):
+    def meanY(self,s,t,Y,gamma):
 
         # compute E[Y(t)|Z_s=z) with s<t 
+        # expects t,s of shape (batch_size,1)
+        # expects gamma of shape (1,K)
         # mean of X_T conditioned on Z_t = (x,Y)
 
         s = s[:,:,None]
@@ -194,57 +197,66 @@ class FractionalSchrödingerBridge(nn.Module):
     
         return torch.cat([mean_x.unsqueeze(-1),mean_y],dim=-1)
     
-    def cond_var(self,t,T,omega,gamma,g):
+    def cond_var(self,s,t,omega,gamma,g):
                     
-            # compute cov(X(t),X(t)|Z_s=z) with s<t 
-            # expects s,t of shape (batch_size1,batch_size2,)
-            # expects omega,gamma of shape (1,K)
+        # compute cov(X(t),X(t)|Z_s=z) with s<t 
+        # expects s,t of shape (batch_size,1)
+        # expects omega,gamma of shape (1,K)
 
-            t = t[:,:,None,None] 
-            T = T[:,:,None,None]
-
-            return self.covX(t,T,T, omega, gamma, g)
+        return self.covX(s,t,t, omega, gamma, g)[:,None]
     
     def covX(self,s,t,T, omega, gamma, g):
 
         # compute cov(X(t),X(T)|Z_s=z) with s<t<=T 
-        # expects s,t,T of shape (batch_size1,batch_size2,1,1)
+        # expects t,s of shape (batch_size,1)
+        # expects T of shape (1,)
         # expects omega,gamma of shape (1,K)
 
-        omega_ij = omega[:,None,:,None]*omega[:,None,None,:]
-        gamma_i = gamma[:,None,:,None]
-        gamma_j = gamma[:,None,None,:]
+        t = t[:,:,None]
+        s = s[:,:,None] 
+        T = T[:,:,None]
+
+        omega_ij = omega[:,:,None]*omega[:,None,:]
+        gamma_i = gamma[:,:,None]
+        gamma_j = gamma[:,None,:]
         gamma_ij =  gamma_i + gamma_j
 
         weight = omega_ij/ gamma_ij
-
         S = weight * (torch.exp(t*gamma_ij) -torch.exp(s*(gamma_ij))) * torch.exp(-T*gamma_j - t*gamma_i) 
+        return g**2 * (torch.sum(S,axis=(1,2)))
+    
+    def covYX(self,t,T, omega, gamma, g):
 
-        return g**2 * (torch.sum(S,axis=(2,3)))
-
-    def covYX(self,s,t,T, omega, gamma, g):
-
-        # compute cov(Y(t),X(T)|Z_s=z) with s<t<=T 
-        # expects s,t,T of shape (batch_size1,batch_size2,1,1)
+        # compute cov(Y(t),X(T)) with s<t<=T 
+        # expects t of shape (batch_size,1)
+        # expects T of shape (1,)
         # expects omega,gamma of shape (1,K)
 
-        gamma_l = gamma[:,None,:,None] #dim of Y_l
-        omega_k = omega[:,None,None,:]
-        gamma_k = gamma[:,None,None,:]
+        t = t[:,:,None] 
+        T = T[:,:,None]
+
+        gamma_l = gamma[:,:,None] #dim of Y_l
+        omega_k = omega[:,None,:]
+        gamma_k = gamma[:,None,:]
 
         weight = omega_k/(gamma_l+gamma_k) #dim of omega_k in X
         S = weight *(torch.exp(t*(gamma_l+gamma_k)) -1)*torch.exp(-t*gamma_l-T*gamma_k)
 
-        return g * torch.sum(S,axis=3)
+        return g * torch.sum(S,axis=2)
 
-    def covY(self,s,t,T, gamma):
+    def covY(self,s,t,T,gamma):
 
         # compute cov(Y(t),Y(T)|Z_s=z) with s<t<=T 
-        # expects s,t,T of shape (batch_size1,batch_size2,1,1)
+        # expects s,t of shape (batch_size,1)
+        # expects T of shape (1,1)
         # expects omega,gamma of shape (1,K)
+        
+        t = t[:,:,None] 
+        s = s[:,:,None]
+        T = T[:,:,None]
 
-        gamma_i = gamma[:,None,:,None]
-        gamma_j = gamma[:,None,None,:]
+        gamma_i = gamma[:,:,None]
+        gamma_j = gamma[:,None,:]
         gamma_ij =  gamma_i + gamma_j
 
         return (torch.exp(-T*gamma_j-t*gamma_i)*(torch.exp(t*gamma_ij)-torch.exp(s*gamma_ij)))/gamma_ij
@@ -252,65 +264,59 @@ class FractionalSchrödingerBridge(nn.Module):
     def covZ(self,t,T, omega, gamma, g, s=None, eps=1e-4):
 
         # compute cov(X(t),X(T)|Z_s=z) with s<t<=T 
-        # expects s,t,T of shape (batch_size1,batch_size2,)
+        # expects s,t of shape (batch_size,1)
+        # expects T of shape (1,1)
         # expects omega,gamma of shape (1,K)
 
-        t = t[:,:,None,None] 
-        T = T[:,:,None,None]
-        s = torch.zeros_like(t) if s is None else s[:,:,None,None]
+        s = torch.zeros_like(t) if s is None else s
 
         K = omega.shape[1]
-        bs1 = t.shape[0]
-        bs2 = t.shape[1]
-        Sig = torch.zeros(bs1, bs2, K+1,K+1)
+        bs = t.shape[0]
+        Sig = torch.zeros(bs, K+1,K+1)
         
-        Sig_xy = self.covYX(s,t,T, omega, gamma, g)
-        Sig[:,:,0,0] = self.covX(s,t,T, omega, gamma, g)
-        Sig[:,:,1:,0] = Sig_xy
-        Sig[:,:,0,1:] = Sig_xy
-        Sig[:,:,1:,1:] = self.covY(s,t,T, gamma)
+        Sig_xy = self.covYX(t,T, omega, gamma, g)
+        Sig[:,0,0] = self.covX(s,t,T, omega, gamma, g)
+
+        Sig[:,1:,0] = Sig_xy
+        Sig[:,0,1:] = Sig_xy
+        Sig[:,1:,1:] = self.covY(s,t,T, gamma)
 
         # I_eps = torch.eye(K, K)[None, :, :] * torch.ones((bs, K, K)) * eps * torch.exp(-2 * gamma * t[:,:,0])[:, :, None]
         # Sig[:,1:,1:] = Sig[:,1:,1:] + I_eps
         # Sig[:,0,0] += eps
 
-        Sig = Sig + torch.eye(K+1, K+1)[None,None, :, :] * torch.ones((bs1, bs2, K+1, K+1)) * eps
+        Sig = Sig + torch.eye(K+1, K+1)[None, :, :] * torch.ones((bs, K+1, K+1)) * eps
 
-        assert ((torch.diag(Sig[0,0])>0).all()), f'Found negativ variance: \n {torch.diag(Sig[0,0])<0}'
+        assert ((torch.diag(Sig[0])>0).all()), f'Found negativ variance: \n {torch.diag(Sig[0])<0}'
 
         return Sig
 
     def sample_pinned(self,t,T,x0,xT,omega,gamma,g):
 
         K = omega.shape[1]
-        print(f"IN DIFFUSIVITZ TIME SHAPE IS {t.shape}")
 
-        bs1 = t.shape[0]
-        bs2 = 1#t.shape[1]
-        D = x0.shape[1]
+        bs = t.shape[0]
+        d = x0.shape[1]
 
-        t = t[:,:,None,None] 
-        T = T[:,:,None,None]
         s = torch.zeros_like(t)
 
-        mu = torch.zeros(x0.shape+(K+1,))
+        mu = torch.zeros(bs,d,K+1)
         mu[:,:,0] = x0
 
-        Sig_zx = torch.zeros(bs1,bs2,K+1)
+        Sig_zx = torch.zeros(bs,K+1)
         
-        Sig_zx[:,:,0] = self.covX(s,t,T, omega, gamma, g)
-        Sig_zx[:,:,1:] = self.covYX(s,t,T, omega, gamma, g)
+        Sig_zx[:,0] = self.covX(s,t,T, omega, gamma, g)
+        Sig_zx[:,1:] = self.covYX(t,T, omega, gamma, g)
 
-        var = self.covX(s,T,T, omega, gamma, g)
-        mu_bar = mu + (1/var[:,:,None]) * Sig_zx * ((xT-x0)[:,:,None])
+        var = self.covX(s,T,T, omega, gamma, g)[:,None,None]
 
-        Sig_bar = self.covZ(t[:,:,0,0],t[:,:,0,0],omega,gamma,g) - (1/var[:,:,None,None]) * (Sig_zx[:,:,:,None] * Sig_zx[:,:,None,:])
+        mu_bar = mu + (1/var) * Sig_zx[:,None,:] * ((xT-x0)[:,:,None])
 
-        Sig_bar_flat = einops.rearrange(Sig_bar, 'bs1 bs2 K L -> (bs1 bs2) K L', bs1=bs1, bs2=bs2)
-        assert (Sig_bar_flat.transpose(1, 2) == Sig_bar_flat).all(), f'Covariance is not symmetric'
+        Sig_bar = self.covZ(t,t,omega,gamma,g) - (1/var) * (Sig_zx[:,:,None] * Sig_zx[:,None,:])
 
-        noise_flat = sample_from_batch_multivariate_normal(Sig_bar_flat,c=D,h=1,w=1,batch_size=int(bs1*bs2), aug_dim=K+1)[:,:,0,0,:]
-        noise = einops.rearrange(noise_flat, '(bs1 bs2) D K -> bs1 bs2 D K', bs1=bs1, bs2=bs2)
+        assert (Sig_bar.transpose(1, 2) == Sig_bar).all(), f'Covariance is not symmetric'
+
+        noise = sample_from_batch_multivariate_normal(Sig_bar,c=d,h=1,w=1,batch_size=bs, aug_dim=K+1)[:,:,0,0,:]
 
         return mu_bar + noise
 
@@ -322,8 +328,6 @@ class FractionalSchrödingerBridge(nn.Module):
         omega = omega[:,None,:]
 
         weight = omega * self.zeta(t,T,gamma,g) 
-        print(f"weight shape: {weight.shape}")
-        print(f"Y shape is {Y.shape}")
         y_part = (torch.sum(weight*Y, dim=-1)) 
 
         return x + y_part
@@ -331,11 +335,13 @@ class FractionalSchrödingerBridge(nn.Module):
     def score(self, score_x, t,T, omega, gamma, g_max):
 
         # expects the output of a score model of dimension (batch_size1,batch_size2)
-
+        t = t[:,:,None]
+        T = T[:,:,None]
+    
         omega = omega[:,None,:]
         gamma = gamma[:,None,:]
 
-        scale = torch.ones(1,1,self.omega.shape[1]+1)
+        scale = torch.ones(1,1,self.K+1)
         scale[:,:,1:] = omega * self.zeta(t,T, gamma, g_max)
         
         return scale * score_x[:,:,None]

@@ -10,6 +10,7 @@ from sbalign.utils.sb_utils import get_t_schedule, get_diffusivity_schedule
 from sbalign.utils.ops import to_numpy
 from sbalign.utils.definitions import DEVICE
 
+from sbalign.training.diffusivity import matrix_vector_mp
 
 def rmsd(y_pred, y_true):
     se = (y_pred - y_true)**2
@@ -47,8 +48,10 @@ class ConfEngine:
 
         if g_fn is None:
             g_fn = get_diffusivity_schedule(model_args.diffusivity_schedule,
-                                            g_max=model_args.max_diffusivity)
-        self.g_fn = g_fn
+                                            g_max=model_args.max_diffusivity,
+                                            K = args.K,
+                                            H = args.H)
+        self.dif = g_fn
 
     def generate_conformation(self, data):
 
@@ -56,25 +59,56 @@ class ConfEngine:
         data.pos_t = data.pos_0
         data.pos_orig = data.pos_0.clone()
 
+        #print('data.pos_t at init',data.pos_t.dtype)
+        if self.dif.K > 0:
+            pos = torch.cat([data.pos_orig[:,:,None],torch.zeros(data.pos_orig.shape[0], data.pos_orig.shape[1], self.dif.K)],dim=-1)
+
+        else:
+            pos = data.pos_orig.clone()
+
         trajectory = []
 
         with torch.no_grad():
             for t_idx in range(self.inference_steps):
-                t = self.t_schedule[t_idx]
 
-                data.t = t * data.x.new_ones(data.num_nodes)
-                g_t = data.x.new_tensor(self.g_fn(t)).float()
+                if self.dif.K > 0:
 
-                drift = self.model.run_drift(data)
-                diffusion = g_t * torch.randn_like(data.pos_t) * torch.sqrt(self.dt)
+                    t = self.t_schedule[t_idx].float()
+                    data.t = (t * data.x.new_ones(data.num_nodes))#.float()
+                    t = t[None,None]
+                    T = self.dif.T
 
-                dpos = torch.square(g_t) * drift * self.dt + diffusion
-                pos_t = data.pos_t  + dpos
-                data.pos_t = pos_t
-                trajectory.append(pos_t)
+                    x = pos[:,:,0]
+                    Y = pos[:,:,1:]
+                    F = self.dif.F_t[None,None,:,:]
+                    G = self.dif.G_t[None,None,:]
+                    GG = self.dif.G_t[None,None,:,None] * self.dif.G_t[None,None,None,:]
+                    dw = torch.sqrt(self.dt) * torch.randn_like(x)[:,:,None]
+
+                    data.pos_t = self.dif.input_transform(x,Y,t,T,self.dif.omega, self.dif.gamma,self.dif.g_max)
+                    drift_pos_x = self.model.run_drift(data)
+
+                    drift_pos = self.dif.score(drift_pos_x,t,T,self.dif.omega, self.dif.gamma,self.dif.g_max)
+                    dpos = (matrix_vector_mp(F, pos) + matrix_vector_mp(GG, drift_pos))*self.dt + G * dw
+                    
+                    pos = pos + dpos
+                    trajectory.append(pos)
+                else:    
+                    t = self.t_schedule[t_idx]
+
+                    data.t = t * data.x.new_ones(data.num_nodes)
+                    g_t = data.x.new_tensor(self.g_fn(t)).float()
+
+                    drift = self.model.run_drift(data)
+                    diffusion = g_t * torch.randn_like(data.pos_t) * torch.sqrt(self.dt)
+
+                    dpos = torch.square(g_t) * drift * self.dt + diffusion
+                    pos_t = data.pos_t  + dpos
+                    data.pos_t = pos_t
+                    trajectory.append(pos_t)
 
         trajectory = torch.stack(trajectory, dim=0)
-        return trajectory[-1], trajectory
+        return trajectory[-1,:,:,0], trajectory[:,:,0]
     
     def generate_conformations(self, data, apply_mean: bool = True):
         data = data.to(DEVICE)

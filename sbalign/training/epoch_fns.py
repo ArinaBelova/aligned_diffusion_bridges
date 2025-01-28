@@ -45,7 +45,7 @@ def train_epoch_sbalign(
         optimizer, loss_fn,
         grad_clip_value: float = None, 
         ema_weights=None, args=None):
-
+    
     model.train()
     monitor = ProgressMonitor()
 
@@ -98,7 +98,7 @@ def train_epoch_sbalign(
     return monitor.summarize()
 
 
-def test_epoch_sbalign(model, loader, loss_fn, args):
+def test_epoch_sbalign(model, loader, loss_fn):
     model.eval()
     monitor = ProgressMonitor()
 

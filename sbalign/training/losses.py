@@ -18,12 +18,13 @@ def loss_function_sbalign(
         drift_weight: float = 1.0,
         reg_weight_T: float = 1.0,
         reg_weight_t: float = 1.0,
-        t_max: float=1.0
+        t_max: float=1.0,
+        K: int = 0,
     ):
     
     assert data.t.max().item() <= t_max
 
-    if data.mode == 'augmented':
+    if K > 0:
         t_diff = data.cond_var_t
     else:
         t_diff = (beta(g, 1, steps_num) - beta(g, data.t, steps_num)).to(DEVICE)
@@ -72,7 +73,8 @@ def loss_function_docking(
         drift_weight: float = 1.0, 
         reg_weight_T: float = 1.0, 
         reg_weight_t: float = 1.0, 
-        t_max: float=1.0
+        t_max: float=1.0,
+        K: int = 0,
     ):
 
     assert data["ligand"].t.max().item() <= t_max
@@ -120,14 +122,17 @@ def loss_function_conf(
         reg_weight_T: float = 1.0, 
         reg_weight_t: float = 1.0, 
         t_max: float=1.0, 
-        apply_mean: bool = True
+        apply_mean: bool = True,
+        K: int = 0,
     ):
     
     mean_dims = (0, 1) if apply_mean else 1
 
     assert data.t.max().item() <= t_max
-
-    beta_t_diff = (beta(g, 1, steps_num) - beta(g, data.t, steps_num)).to(DEVICE)
+    if K > 0:
+        beta_t_diff = data.cond_var_t
+    else:
+        beta_t_diff = (beta(g, 1, steps_num) - beta(g, data.t, steps_num)).to(DEVICE)
     x_diff = (data.pos_T - data.pos_t)
 
     bb_drift_true = (x_diff) / beta_t_diff
@@ -172,7 +177,8 @@ def loss_fn_from_args(args):
         drift_weight=args.drift_weight, 
         reg_weight_T=args.reg_weight_T,
         reg_weight_t=args.reg_weight_t, g=g, 
-        steps_num=args.inference_steps
+        steps_num=args.inference_steps,
+        K=args.K
     )
 
     return loss_fn

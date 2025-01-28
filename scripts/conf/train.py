@@ -8,10 +8,10 @@ import math
 
 #######
 #  Hack for the server to avoid the horrible setup.py script
-import os
-os.chdir("/home/fe/belova/projects/bridges/aligned_diffusion_bridges") 
-import sys
-sys.path.append(os.getcwd())
+# import os
+# os.chdir("/home/fe/belova/projects/bridges/aligned_diffusion_bridges") 
+# import sys
+# sys.path.append(os.getcwd())
 
 # for key, value in os.environ.items():
 #     print(f"{key}={value}")
