@@ -12,7 +12,7 @@ TORCH=2.4.0
 CUDA=cu124
 
 # if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-#     CUDA=cu113
+#     CUDA=cu124
 # else
 #     CUDA=cpu
 # fi
