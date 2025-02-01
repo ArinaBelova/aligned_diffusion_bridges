@@ -3,7 +3,8 @@ import torch.nn as nn
 import numpy as np
 from functools import partial
 
-from sbalign.utils.sb_utils import beta, get_diffusivity_schedule
+from sbalign.utils.sb_utils import beta
+from sbalign.training.diffusivity import get_diffusivity_schedule
 from sbalign.utils.definitions import DEVICE
 
 
@@ -163,7 +164,7 @@ def loss_function_conf(
 
 def loss_fn_from_args(args):
 
-    g = get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K).g
+    g = get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K, norm=args.norm).g
 
     if args.task == "synthetic":
         loss_fn_base = loss_function_sbalign

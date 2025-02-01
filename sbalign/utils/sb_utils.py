@@ -93,34 +93,34 @@ def sample_from_brownian_bridge(g, t, x_0, x_T, t_min=0.0, t_max=1.0):
     return mu_t + sigma_t * torch.randn_like(exp_t)
 
 
-# --------- Diffusivity Schedule ---------
+# # --------- Diffusivity Schedule ---------
 
-def constant_g(g_max):
-    return ConstantDiffusivitySchedule(g_max)
-    #return np.ones_like(t) * g_max
+# def constant_g(g_max):
+#     return ConstantDiffusivitySchedule(g_max)
+#     #return np.ones_like(t) * g_max
 
-def triangular_g(t, g_max):
-    g_min = 0.85
-    return g_max - 2 * np.abs(t - .5) * (g_max-g_min)
+# def triangular_g(t, g_max):
+#     g_min = 0.85
+#     return g_max - 2 * np.abs(t - .5) * (g_max-g_min)
 
-def inverse_triangular_g(t, g_max):
-    g_min = .01
-    return g_min - 2 * np.abs(t - .5) * (g_min-g_max)
+# def inverse_triangular_g(t, g_max):
+#     g_min = .01
+#     return g_min - 2 * np.abs(t - .5) * (g_min-g_max)
 
-def decreasing_g(t, g_max):
-    g_min = .1
-    return g_max - np.square(t) * (g_max-g_min)
+# def decreasing_g(t, g_max):
+#     g_min = .1
+#     return g_max - np.square(t) * (g_max-g_min)
 
-diffusivity_schedules = {
-    "constant": constant_g,
-    "triangular": triangular_g,
-    "inverse_triangular": inverse_triangular_g,
-    "decreasing": decreasing_g,
-    "fbb": fbb,
-}
+# diffusivity_schedules = {
+#     "constant": constant_g,
+#     "triangular": triangular_g,
+#     "inverse_triangular": inverse_triangular_g,
+#     "decreasing": decreasing_g,
+#     "fbb": fbb,
+# }
 
-def get_diffusivity_schedule(schedule, g_max, H=0.5, K=5):
-    if schedule.lower() == 'fbb':
-        return diffusivity_schedules[schedule](H=H, K=K, g_max=g_max)
-    else: 
-        return diffusivity_schedules[schedule](g_max)
+# def get_diffusivity_schedule(x, schedule, g_max, H=0.5, K=5, norm=False):
+#     if schedule.lower() == 'fbb':
+#         return diffusivity_schedules[schedule](H=H, K=K, norm=norm, g_max=g_max)
+#     else: 
+#         return diffusivity_schedules[schedule](g_max)

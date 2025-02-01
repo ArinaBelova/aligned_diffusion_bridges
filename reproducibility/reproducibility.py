@@ -66,7 +66,7 @@ def load_model(filename, args):
 
     model.load_state_dict(torch.load(filename))
 
-    dif = get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K)
+    dif = get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K, norm=args.norm)
 
     return model, dif
 
@@ -86,6 +86,7 @@ class AlignExperiment:
         import train
 
         list_args = list(filter(lambda x: len(x) > 0, cmd_args.split(" ")))
+        print('LIST ARGS',list_args)
 
         # Append automatic values of data_dir and log_di
         config = vars(parse_train_args(list_args))
@@ -95,7 +96,7 @@ class AlignExperiment:
 
         model = train.main(list_args)
 
-        dif = get_diffusivity_schedule(config.diffusivity_schedule, config.max_diffusivity, H=config.H, K=config.K)
+        dif = get_diffusivity_schedule(config.diffusivity_schedule, config.max_diffusivity, H=config.H, K=config.K, norm=config.norm)
         
 
         # Default save

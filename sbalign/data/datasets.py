@@ -37,7 +37,7 @@ def build_data(problem_name, n_samples, device):
 
 def build_data_loader(args):
     if args.transform is None:
-        transform = BrownianBridgeTransform(dif=get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K))
+        transform = BrownianBridgeTransform(dif=get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K, norm=args.norm))
 
     if helper.is_toy_dataset(args.dataset):
         train_dataset = SyntheticDataset(root=os.path.join("../reproducibility/", args.data_dir), transform=transform, problem=args.dataset,

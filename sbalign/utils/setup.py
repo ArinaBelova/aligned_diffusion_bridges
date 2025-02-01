@@ -94,6 +94,7 @@ def parse_train_args(cmd_args=None):
     parser.add_argument("--max_diffusivity", default=1.0, type=float, help="Maximum value of diffusivity")
     parser.add_argument("--H", default=0.5, type=float, help="Hurst index")
     parser.add_argument("--K", default=0, type=int, help="Number of augmenting processes")
+    parser.add_argument("--norm", default=False, type=bool, help="Normalize variance according to max_diffusivity")
     parser.add_argument("--use_drift_in_doobs", default=False, type=bool, 
                         help="Whether to use the drift as input to the parametrization of Doobs score")
 

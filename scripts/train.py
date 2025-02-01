@@ -23,7 +23,7 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
     best_epoch = 0
     best_val_inference_epoch = 0
 
-    g = get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K).g
+    g = get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K, norm=args.norm).g
     
     loss_fn = loss_fn_from_args(args)
     
@@ -55,7 +55,7 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
             ema_weights.copy_to(model.parameters())
 
         # Compute losses on validation set
-        val_losses = test_epoch_sbalign(model=model, loader=val_loader, loss_fn=loss_fn, args=args)
+        val_losses = test_epoch_sbalign(model=model, loader=val_loader, loss_fn=loss_fn)
         print_msg = f"Epoch {epoch+1}: "
         for item, value in val_losses.items():
             if item == "loss":

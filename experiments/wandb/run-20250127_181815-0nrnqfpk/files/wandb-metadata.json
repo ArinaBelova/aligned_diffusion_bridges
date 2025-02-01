@@ -1,0 +1,32 @@
+{
+  "os": "Linux-6.8.0-51-generic-x86_64-with-glibc2.35",
+  "python": "3.9.20",
+  "startedAt": "2025-01-27T17:18:15.246025Z",
+  "program": "/home/fe/nobis/Projects/bridge/aligned_diffusion_bridges/scripts/conf/train.py",
+  "codePath": "scripts/conf/train.py",
+  "git": {
+    "remote": "git@github.com:ArinaBelova/aligned_diffusion_bridges.git",
+    "commit": "b16219c6434302023db23a1f0e30bf4ae96a5644"
+  },
+  "email": "gabriel.nobis@hhi.fraunhofer.de",
+  "root": "/home/fe/nobis/Projects/bridge/aligned_diffusion_bridges/experiments",
+  "host": "fg5y5d3",
+  "username": "nobis",
+  "executable": "/home/fe/nobis/anaconda3/envs/sbalign_test/bin/python",
+  "codePathLocal": "scripts/conf/train.py",
+  "cpu_count": 4,
+  "cpu_count_logical": 8,
+  "disk": {
+    "/": {
+      "total": "250375106560",
+      "used": "236708216832"
+    }
+  },
+  "memory": {
+    "total": "16484339712"
+  },
+  "cpu": {
+    "count": 4,
+    "countLogical": 8
+  }
+}

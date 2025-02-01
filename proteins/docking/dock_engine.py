@@ -8,7 +8,8 @@ from typing import Callable
 from proteins.docking.models import build_model_from_args
 from proteins.docking.metrics import compute_complex_rmsd, compute_interface_rmsd, aligned_rmsd, to_numpy
 
-from sbalign.utils.sb_utils import get_t_schedule, get_diffusivity_schedule
+from sbalign.utils.sb_utils import get_t_schedule
+from sbalign.training.diffusivity import get_diffusivity_schedule
 from sbalign.utils.ops import axis_angle_to_matrix
 from sbalign.utils.definitions import DEVICE
 

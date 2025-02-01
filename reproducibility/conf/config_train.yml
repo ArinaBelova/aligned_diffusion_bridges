@@ -28,6 +28,7 @@ lr: 0.001
 max_diffusivity: 1.0
 H: 0.1
 K: 2
+norm: False
 max_distance: 80.0
 max_neighbors: 40
 max_radius: 40.0

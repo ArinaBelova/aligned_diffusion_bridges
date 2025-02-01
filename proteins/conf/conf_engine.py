@@ -6,7 +6,8 @@ import copy
 from typing import Callable
 
 from proteins.conf.models import build_model_from_args
-from sbalign.utils.sb_utils import get_t_schedule, get_diffusivity_schedule
+from sbalign.utils.sb_utils import get_t_schedule
+from sbalign.training.diffusivity import get_diffusivity_schedule
 from sbalign.utils.ops import to_numpy
 from sbalign.utils.definitions import DEVICE
 

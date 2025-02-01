@@ -30,10 +30,10 @@ def decreasing_g(t, g_max):
     g_min = .1
     return g_max - np.square(t) * (g_max-g_min)
 
-def fbb(H, K=5, g_max=1.0, gamma_max=20.0,device="cpu"):
+def fbb(H, K=5, norm=False, g_max=1.0, gamma_max=20.0,device="cpu"):
     print('init H in fbb',H)
     print('init K fbb',K)
-    return FractionalSchrödingerBridge(H=H,K=K,g_max=g_max,gamma_max=gamma_max,device=device)
+    return FractionalSchrödingerBridge(H=H,K=K,norm=norm,g_max=g_max,gamma_max=gamma_max,device=device)
 
 diffusivity_schedules = {
     "constant": constant_g,
@@ -43,9 +43,9 @@ diffusivity_schedules = {
     "fbb": fbb,
 }
 
-def get_diffusivity_schedule(schedule, g_max, H=0.5, K=5):
+def get_diffusivity_schedule(schedule, g_max, H=0.5, K=5, norm=False):
     if schedule.lower() == 'fbb':
-        return diffusivity_schedules[schedule](H=H, K=K, g_max=g_max)
+        return diffusivity_schedules[schedule](H=H, K=K, norm=norm, g_max=g_max)
     else: 
         return diffusivity_schedules[schedule](g_max)
     #return partial(diffusivity_schedules[schedule], g_max=g_max)
@@ -62,7 +62,7 @@ class FractionalSchrödingerBridge(nn.Module):
 
     """Abstract class for an approximate fractional schrödinger bridge process"""
 
-    def __init__(self, H=0.5, K=5, g_max=1.0, gamma_max=20.0, gamma_min=None, approx_cov=False, T=1.0, pd_eps=1e-4, device="cpu"):
+    def __init__(self, H=0.5, K=5, norm=False, g_max=1.0, gamma_max=20.0, gamma_min=None, approx_cov=False, T=1.0, pd_eps=1e-4, device="cpu"):
         super(FractionalSchrödingerBridge, self).__init__()
 
         """parameters of fBM approximation"""
@@ -103,25 +103,19 @@ class FractionalSchrödingerBridge(nn.Module):
         self.register_buffer("gamma_j", self.gamma[:, None, :].clone())
         self.update_omega(omega,A=A,b=b)
 
-        omega_i = self.omega[:,None,:].clone()
-        omega_j = self.omega[:,:,None].clone()
-        gamma_i = self.gamma[:,None,:].clone()
-        gamma_j = self.gamma[:,:,None].clone()
-        
-        normalize_variance = False
+        self.g_max =  torch.tensor(g_max)
+        self.norm = norm
 
         #only valid for T=1
-        if normalize_variance:
-            norm_constant = torch.sum((self.omega[:,None,:] * self.omega[:,:,None])/(self.gamma[:,None,:]+self.gamma[:,:,None]) * (1-torch.exp(-(self.gamma[:,None,:]+self.gamma[:,:,None])))).item()
-        else:
-            norm_constant=1.0
+        if self.norm:
+            var_T = self.cond_var(torch.zeros_like(self.T),self.T,self.omega,self.gamma,1.0)
+            print(f'Variance before normalization {var_T}')
+            omega = omega/torch.sqrt(var_T)[:,0]
+            self.update_omega(omega,A=A,b=b)
         
-        print(f'normalize variance with {norm_constant}')
-        self.g_max =  torch.tensor(g_max/norm_constant)
-        print('dtype',self.g_max.dtype)
-        print(f'g_max={g_max}')
-
-        #self.g_max =  torch.tensor(g_max)
+        var_T = self.cond_var(torch.zeros_like(self.T),self.T,self.omega,self.gamma,self.g_max)
+        print('g_max=',self.g_max)
+        print(f'Variance at T: {var_T}')
 
         if self.K>0:
             F = torch.zeros(K+1,K+1)
