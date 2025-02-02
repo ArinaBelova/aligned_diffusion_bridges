@@ -47,3 +47,5 @@ sb_align/data/
 reproducibility/moon/model/*
 reproducibility/*
 scripts/conf/evaluate.py
+scripts/conf/train.py
+experiments/wand/*
