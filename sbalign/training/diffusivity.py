@@ -339,7 +339,13 @@ class FractionalSchrödingerBridge(nn.Module):
         omega = omega[:,None,:]
         gamma = gamma[:,None,:]
 
-        scale = torch.ones(1,1,self.K+1).to(DEVICE)
+        scale = torch.ones(1,1,self.K+1)#.to(DEVICE)
+
+        print(t.get_device())
+        print(T.get_device())
+        print(gamma.get_device())
+        print(g_max.get_device())
+
         scale[:,:,1:] = omega * self.zeta(t,T, gamma, g_max)
         return scale * score_x[:,:,None]
     

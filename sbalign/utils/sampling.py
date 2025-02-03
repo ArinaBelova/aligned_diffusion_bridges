@@ -9,12 +9,13 @@ def sampling(pos_0, model, diffusivity, inference_steps, t_schedule, apply_score
 
     model.eval()
 
+    pos_0 = pos_0.to(DEVICE)
     if diffusivity.K > 0:
-        pos = torch.cat([pos_0[:,:,None],torch.zeros(pos_0.shape[0], pos_0.shape[1], diffusivity.K)],dim=-1)
+        pos = torch.cat([pos_0[:,:,None],torch.zeros(pos_0.shape[0], pos_0.shape[1], diffusivity.K, device=DEVICE)],dim=-1)
         trajectory = np.zeros((inference_steps+1, *pos_0.shape, diffusivity.K+1))
 
     else:
-        pos = pos_0.clone()
+        pos = pos_0.clone().to(DEVICE)
         trajectory = np.zeros((inference_steps+1, *pos_0.shape))   
 
     trajectory[0] = pos.cpu()
@@ -26,19 +27,19 @@ def sampling(pos_0, model, diffusivity, inference_steps, t_schedule, apply_score
 
             if diffusivity.K > 0:
                 
-                t = t_schedule[t_idx][None,None]
-                T = diffusivity.T
+                t = t_schedule[t_idx][None,None].to(DEVICE)
+                T = diffusivity.T.to(DEVICE)
 
                 x = pos[:,:,0]
                 Y = pos[:,:,1:]
-                F = diffusivity.F_t[None,None,:,:]
-                G = diffusivity.G_t[None,None,:]
-                GG = diffusivity.G_t[None,None,:,None] * diffusivity.G_t[None,None,None,:]
+                F = diffusivity.F_t[None,None,:,:].to(DEVICE)
+                G = diffusivity.G_t[None,None,:].to(DEVICE)
+                GG = diffusivity.G_t[None,None,:,None].to(DEVICE) * diffusivity.G_t[None,None,None,:].to(DEVICE)
                 dw = torch.sqrt(dt) * torch.randn_like(x)[:,:,None]
 
-                pos_transform = diffusivity.input_transform(x,Y,t,T,diffusivity.omega, diffusivity.gamma,diffusivity.g_max)
+                pos_transform = diffusivity.input_transform(x,Y,t,T,diffusivity.omega.to(DEVICE), diffusivity.gamma.to(DEVICE),diffusivity.g_max.to(DEVICE))
                 drift_pos_x = model.run_drift(pos_transform, torch.ones(pos_transform.shape[0]).to(DEVICE)* t[0,0])
-                drift_pos = diffusivity.score(drift_pos_x,t,T,diffusivity.omega, diffusivity.gamma,diffusivity.g_max)
+                drift_pos = diffusivity.score(drift_pos_x.to(DEVICE),t,T,diffusivity.omega.to(DEVICE), diffusivity.gamma.to(DEVICE),diffusivity.g_max.to(DEVICE))
                 dpos = (matrix_vector_mp(F, pos) + matrix_vector_mp(GG, drift_pos))*dt + G * dw
             else:
                 t = t_schedule[t_idx]
