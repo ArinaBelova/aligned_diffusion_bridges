@@ -49,7 +49,10 @@ class DockingEngine:
 
         if g_fn is None:
             g_fn = get_diffusivity_schedule(model_args.diffusivity_schedule,
-                                            g_max=model_args.max_diffusivity)
+                                            g_max=model_args.max_diffusivity,
+                                            K = model_args.K,
+                                            H = args.H,
+                                            norm = args.norm)
         self.g_fn = g_fn
         
     def generate_sample(self, data):

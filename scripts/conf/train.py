@@ -9,7 +9,7 @@ import math
 #######
 #  Hack for the server to avoid the horrible setup.py script
 import os
-os.chdir("/home/fe/belova/projects/bridges/aligned_diffusion_bridges") 
+os.chdir("/home/fe/nobis/projects/bridges/aligned_diffusion_bridges") 
 import sys
 sys.path.append(os.getcwd())
 
@@ -35,8 +35,8 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
     best_epoch = 0
     best_val_inference_epoch = 0
 
-    print(f"On training start: K={args.K}, H={args.H}")
-    g = get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K)
+    print(f"On training start: K={args.K}, H={args.H}, norm={args.norm}")
+    g = get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K, norm=args.norm)
     loss_fn = loss_fn_from_args(args)
 
     logs = {'val_loss': math.inf, "val_inference_rmsd": math.inf}
@@ -181,7 +181,9 @@ def main(cmd_args=None):
     # Load args from command line and replace values with those from config
     print(flush=True)
     args = parse_conf_train_args(cmd_args=cmd_args)
+    print('args before update',args)
     args = update_args_from_config(args=args)
+    print(args, flush=True)
 
     # Wandb setup
     wandb_setup(args)

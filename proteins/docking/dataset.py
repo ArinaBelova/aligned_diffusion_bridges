@@ -292,7 +292,10 @@ def build_data_loader(args):
 
     if args.transform is None:
         g_fn = get_diffusivity_schedule(schedule=args.diffusivity_schedule, 
-                                        g_max=args.max_diffusivity)
+                                        g_max=args.max_diffusivity
+                                        K = args.K,
+                                        H = args.H,
+                                        norm = args.norm)
         transform = BrownianBridgeTransform(g=g_fn, rot_vec=rot_vec, tr_vec=tr_vec)
 
     train_dataset = RigidProteinDocking(

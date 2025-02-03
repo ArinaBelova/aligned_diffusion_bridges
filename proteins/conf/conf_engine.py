@@ -52,7 +52,8 @@ class ConfEngine:
             g_fn = get_diffusivity_schedule(model_args.diffusivity_schedule,
                                             g_max=model_args.max_diffusivity,
                                             K = args.K,
-                                            H = args.H)
+                                            H = args.H,
+                                            norm = args.norm)
         self.dif = g_fn
 
     def generate_conformation(self, data):

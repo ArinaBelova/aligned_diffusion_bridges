@@ -9,7 +9,7 @@ import torch
 from torch_geometric.loader import DataLoader
 
 import os
-os.chdir("/home/fe/belova/projects/bridges/aligned_diffusion_bridges") 
+os.chdir("/home/fe/nobis/projects/bridges/aligned_diffusion_bridges") 
 import sys
 sys.path.append(os.getcwd())
 
@@ -67,7 +67,8 @@ def prepare_inference_setup(args):
         g_fn = get_diffusivity_schedule(schedule=model_args.diffusivity_schedule, 
                                     g_max=model_args.max_diffusivity,
                                     K=model_args.K,
-                                    H=model_args.H)
+                                    H=model_args.H,
+                                    norm=model_args.norm)
 
         engine = ConfEngine(
             samples_per_protein=args.n_samples,

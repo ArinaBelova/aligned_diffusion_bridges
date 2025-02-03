@@ -109,15 +109,17 @@ class FractionalSchrödingerBridge(nn.Module):
         self.norm = norm
 
         #only valid for T=1
-        if self.norm:
+        if self.norm and K>0:
             var_T = self.cond_var(torch.zeros_like(self.T),self.T,self.omega,self.gamma,1.0)
-            print(f'Variance before normalization {var_T}')
+            print(f'Variance before normalization {var_T}',flush=True)
             omega = omega/torch.sqrt(var_T)[:,0]
             self.update_omega(omega,A=A,b=b)
         
         var_T = self.cond_var(torch.zeros_like(self.T),self.T,self.omega,self.gamma,self.g_max)
+        print(f'K={self.K}')
+        print(f'norm={self.norm}')
         print('g_max=',self.g_max)
-        print(f'Variance at T: {var_T}')
+        print(f'Variance at T: {var_T}',flush=True)
 
         if self.K>0:
             F = torch.zeros(K+1,K+1)
@@ -668,8 +670,8 @@ def matrix_vector_mp(A,v):
     return result_squeezed
 
 
-def fractional_data_transform(data, diffusivity_schedule, max_diffusivity, H=0.5, K=0):
-    dif=get_diffusivity_schedule(diffusivity_schedule, max_diffusivity, H=H, K=K)
+def fractional_data_transform(data, diffusivity_schedule, max_diffusivity, H=0.5, K=0,norm=False):
+    dif=get_diffusivity_schedule(diffusivity_schedule, max_diffusivity, H=H, K=K,norm=norm)
     if dif.K>0:
         data.pos_t, data.cond_var_t = fractional_input_transform(data.pos_t, data.t, data.aug_pos_T[:,:,1:], dif)
     #    _, _, _, _, eta_Tt, sig_Tt, tau_Tt = dif.marginal_stats(1.0 - data.t[:,0])

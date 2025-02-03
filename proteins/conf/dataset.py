@@ -289,7 +289,8 @@ def construct_transform(args):
         dif = get_diffusivity_schedule(schedule=args.diffusivity_schedule, 
                                         g_max=args.max_diffusivity,
                                         H = args.H,
-                                        K = args.K)
+                                        K = args.K,
+                                        norm = args.norm)
         transform = BrownianBridgeTransform(dif)
         return transform
     else:

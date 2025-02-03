@@ -17,9 +17,9 @@ def wandb_setup(args):
         os.makedirs(DIR)
 
     if args.jobid is None:
-        run_id = wandb.util.generate_id() + f"-K-{args.K}" + f"-H-{args.H}"
+        run_id = wandb.util.generate_id() + f"-K-{args.K}" + f"-H-{args.H}" + f"-norm-{args.norm}"
     else:
-        run_id = args.jobid + f"-K-{args.K}" + f"-H-{args.H}"
+        run_id = args.jobid + f"-K-{args.K}" + f"-H-{args.H}" + f"-norm-{args.norm}"
     
     if args.group_name is not None:
         args.run_name = args.group_name + f"-{run_id}"
@@ -47,6 +47,21 @@ def int_or_float(s):
         return int(s)
     else: # Numbers
         return float(s)
+
+
+
+def str2bool(s):
+    # s is already bool
+    if isinstance(s, bool):
+        return s
+    # s is string repr. of bool
+    if s.lower() in ("yes", "true", "t", "y", "1"):
+        return True
+    elif s.lower() in ("no", "false", "f", "n", "0"):
+        return False
+    # s is something else
+    else:
+        return s
 
 # -------------------- Synthetic Data Args ---------------------
 
@@ -97,7 +112,7 @@ def parse_train_args(cmd_args=None):
     parser.add_argument("--max_diffusivity", default=1.0, type=float, help="Maximum value of diffusivity")
     parser.add_argument("--H", default=0.5, type=float, help="Hurst index")
     parser.add_argument("--K", default=0, type=int, help="Number of augmenting processes")
-    parser.add_argument("--norm", default=False, type=bool, help="Normalize variance according to max_diffusivity")
+    parser.add_argument("--norm", default=False, type=str2bool, help="Normalize variance according to max_diffusivity")
     parser.add_argument("--use_drift_in_doobs", default=False, type=bool, 
                         help="Whether to use the drift as input to the parametrization of Doobs score")
 
@@ -262,6 +277,7 @@ def parse_conf_train_args(cmd_args=None):
     parser.add_argument("--leakyrelu_slope", type=float, default=0.01)
     parser.add_argument("--H", default=0.5, type=float, help="Hurst index")
     parser.add_argument("--K", default=0, type=int, help="Number of augmenting processes")
+    parser.add_argument("--norm", default=False, type=str2bool, help="Normalize variance according to max_diffusivity")
     parser.add_argument("--jobid", default=None, type=str, help="Job ID to save the model")
 
     
