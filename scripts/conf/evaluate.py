@@ -9,7 +9,7 @@ import torch
 from torch_geometric.loader import DataLoader
 
 import os
-os.chdir("/home/fe/nobis/projects/bridges/aligned_diffusion_bridges") 
+os.chdir("/home/fe/belova/projects/bridges/aligned_diffusion_bridges") 
 import sys
 sys.path.append(os.getcwd())
 
