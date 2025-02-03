@@ -16,7 +16,10 @@ def wandb_setup(args):
     if not os.path.exists(DIR):
         os.makedirs(DIR)
 
-    run_id = wandb.util.generate_id()
+    if args.jobid is None:
+        run_id = wandb.util.generate_id() + f"-K-{args.K}" + f"-H-{args.H}"
+    else:
+        run_id = args.jobid + f"-K-{args.K}" + f"-H-{args.H}"
     
     if args.group_name is not None:
         args.run_name = args.group_name + f"-{run_id}"
@@ -257,6 +260,10 @@ def parse_conf_train_args(cmd_args=None):
     parser.add_argument("--aggr", default="mean", type=str)
     parser.add_argument("--timestep_embed_type", default="sinusoidal", type=str)
     parser.add_argument("--leakyrelu_slope", type=float, default=0.01)
+    parser.add_argument("--H", default=0.5, type=float, help="Hurst index")
+    parser.add_argument("--K", default=0, type=int, help="Number of augmenting processes")
+    parser.add_argument("--jobid", default=None, type=str, help="Job ID to save the model")
+
     
     # Training
     parser.add_argument("--n_epochs", default=10, type=int, help="Number of training epochs.")

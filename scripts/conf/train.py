@@ -8,10 +8,10 @@ import math
 
 #######
 #  Hack for the server to avoid the horrible setup.py script
-# import os
-# os.chdir("/home/fe/belova/projects/bridges/aligned_diffusion_bridges") 
-# import sys
-# sys.path.append(os.getcwd())
+import os
+os.chdir("/home/fe/belova/projects/bridges/aligned_diffusion_bridges") 
+import sys
+sys.path.append(os.getcwd())
 
 # for key, value in os.environ.items():
 #     print(f"{key}={value}")
@@ -35,7 +35,8 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
     best_epoch = 0
     best_val_inference_epoch = 0
 
-    g = get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity)
+    print(f"On training start: K={args.K}, H={args.H}")
+    g = get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K)
     loss_fn = loss_fn_from_args(args)
 
     logs = {'val_loss': math.inf, "val_inference_rmsd": math.inf}

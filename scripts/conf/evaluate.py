@@ -65,7 +65,9 @@ def prepare_inference_setup(args):
     # Inference Engine
     if args.method == "sbalign":
         g_fn = get_diffusivity_schedule(schedule=model_args.diffusivity_schedule, 
-                                    g_max=model_args.max_diffusivity)
+                                    g_max=model_args.max_diffusivity,
+                                    K=model_args.K,
+                                    H=model_args.H)
 
         engine = ConfEngine(
             samples_per_protein=args.n_samples,

@@ -32,6 +32,7 @@ class ConfEngine:
         self.samples_per_protein = samples_per_protein
         
         if model is None:
+            #print("You did not supply existing model, creating a new model from scratch!!!")
             with open(config_file) as f:
                 model_args = Namespace(**yaml.full_load(f))
 
@@ -58,14 +59,13 @@ class ConfEngine:
 
         data.pos_T = None
         data.pos_t = data.pos_0
-        data.pos_orig = data.pos_0.clone()
+        data.pos_orig = data.pos_0.clone().to(DEVICE)
 
-        #print('data.pos_t at init',data.pos_t.dtype)
-        if self.dif.K > 0:
-            pos = torch.cat([data.pos_orig[:,:,None],torch.zeros(data.pos_orig.shape[0], data.pos_orig.shape[1], self.dif.K)],dim=-1)
+        if self.dif.K > 0:        
+            pos = torch.cat([data.pos_orig[:,:,None],torch.zeros(data.pos_orig.shape[0], data.pos_orig.shape[1], self.dif.K, device=DEVICE)],dim=-1)
 
         else:
-            pos = data.pos_orig.clone()
+            pos = data.pos_orig.clone().to(DEVICE)
 
         trajectory = []
 
@@ -76,20 +76,29 @@ class ConfEngine:
 
                     t = self.t_schedule[t_idx].float()
                     data.t = (t * data.x.new_ones(data.num_nodes))#.float()
-                    t = t[None,None]
-                    T = self.dif.T
+                    t = t[None,None].to(DEVICE)
+                    T = self.dif.T.to(DEVICE)
 
                     x = pos[:,:,0]
                     Y = pos[:,:,1:]
-                    F = self.dif.F_t[None,None,:,:]
-                    G = self.dif.G_t[None,None,:]
-                    GG = self.dif.G_t[None,None,:,None] * self.dif.G_t[None,None,None,:]
+                    F = self.dif.F_t[None,None,:,:].to(DEVICE)
+                    G = self.dif.G_t[None,None,:].to(DEVICE)
+                    GG = self.dif.G_t[None,None,:,None].to(DEVICE) * self.dif.G_t[None,None,None,:].to(DEVICE)
                     dw = torch.sqrt(self.dt) * torch.randn_like(x)[:,:,None]
 
-                    data.pos_t = self.dif.input_transform(x,Y,t,T,self.dif.omega, self.dif.gamma,self.dif.g_max)
+                    # print(x.get_device())
+                    # print(Y.get_device())
+                    # print(t.get_device())
+                    # print(T.get_device())
+                    # print(self.dif.omega.get_device())
+                    # print(self.dif.gamma.get_device())
+                    # print(self.dif.g_max.get_device())
+
+
+                    data.pos_t = self.dif.input_transform(x,Y,t,T,self.dif.omega.to(DEVICE), self.dif.gamma.to(DEVICE),self.dif.g_max.to(DEVICE))
                     drift_pos_x = self.model.run_drift(data)
 
-                    drift_pos = self.dif.score(drift_pos_x,t,T,self.dif.omega, self.dif.gamma,self.dif.g_max)
+                    drift_pos = self.dif.score(drift_pos_x.to(DEVICE),t,T,self.dif.omega.to(DEVICE), self.dif.gamma.to(DEVICE),self.dif.g_max.to(DEVICE))
                     dpos = (matrix_vector_mp(F, pos) + matrix_vector_mp(GG, drift_pos))*self.dt + G * dw
                     
                     pos = pos + dpos

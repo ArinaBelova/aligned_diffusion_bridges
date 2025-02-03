@@ -13,6 +13,8 @@ import einops
 
 from . optimal_weights import omega_optimized, gamma_by_gamma_max, gamma_by_r, gamma_by_range
 
+from sbalign.utils.definitions import DEVICE
+
 
 def constant_g(g_max):
     return ConstantDiffusivitySchedule(g_max)
@@ -335,9 +337,8 @@ class FractionalSchrödingerBridge(nn.Module):
         omega = omega[:,None,:]
         gamma = gamma[:,None,:]
 
-        scale = torch.ones(1,1,self.K+1)
+        scale = torch.ones(1,1,self.K+1).to(DEVICE)
         scale[:,:,1:] = omega * self.zeta(t,T, gamma, g_max)
-        
         return scale * score_x[:,:,None]
     
     # def mean_scale(self, t):
