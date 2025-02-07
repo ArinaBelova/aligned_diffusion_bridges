@@ -64,7 +64,7 @@ class FractionalSchrödingerBridge(nn.Module):
 
     """Abstract class for an approximate fractional schrödinger bridge process"""
 
-    def __init__(self, H=0.5, K=5, norm=False, g_max=1.0, gamma_max=20.0, gamma_min=None, approx_cov=False, T=1.0, pd_eps=1e-4, device="cpu"):
+    def __init__(self, H=0.5, K=5, norm=False, g_max=1.0, gamma_max=40.0, gamma_min=0.1, approx_cov=False, T=1.0, pd_eps=1e-4, device="cpu"):
         super(FractionalSchrödingerBridge, self).__init__()
 
         """parameters of fBM approximation"""
@@ -88,11 +88,19 @@ class FractionalSchrödingerBridge(nn.Module):
             else:
                 if gamma_min is None:
                     gamma = gamma_by_gamma_max(K, self.gamma_max, device=device)
+                    print('gamma by max')
+                    print('gamma',gamma)
                 else:
                     gamma = gamma_by_range(K, self.gamma_min, self.gamma_max)
-            omega, A, b = omega_optimized(
-                gamma, self.H, self.T, return_Ab=True, device=device
+                    print('gamma by range')
+                    print('gamma',gamma)
+
+
+            output , cost = omega_optimized(
+                gamma, self.H, self.T, return_Ab=True, device=device,return_cost=True
             )
+            omega, A, b = output
+            print('cost',cost)
 
         else:
             gamma = torch.tensor([0.0])
@@ -103,10 +111,14 @@ class FractionalSchrödingerBridge(nn.Module):
         self.register_buffer("gamma", torch.as_tensor(gamma, device=device)[None, :])
         self.register_buffer("gamma_i", self.gamma[:, :, None].clone())
         self.register_buffer("gamma_j", self.gamma[:, None, :].clone())
+        self.dt = 1/100
         self.update_omega(omega,A=A,b=b)
-
+        self.check_dt(self.dt)
         self.g_max =  torch.tensor(g_max)
         self.norm = norm
+
+        if self.K>0:
+            self.solve_cov_ode()
 
         #only valid for T=1
         if self.norm and K>0:
@@ -114,6 +126,7 @@ class FractionalSchrödingerBridge(nn.Module):
             print(f'Variance before normalization {var_T}',flush=True)
             omega = omega/torch.sqrt(var_T)[:,0]
             self.update_omega(omega,A=A,b=b)
+        
         
         var_T = self.cond_var(torch.zeros_like(self.T),self.T,self.omega,self.gamma,self.g_max)
         print(f'K={self.K}')
@@ -142,6 +155,10 @@ class FractionalSchrödingerBridge(nn.Module):
         self.register_buffer("omega_i", self.omega[:, :, None].clone())
         self.register_buffer("omega_j", self.omega[:, None, :].clone())
         self.double_sum_omega = torch.sum(self.omega_i * self.omega_j, dim=(1, 2))
+
+    def check_dt(self, dt):
+        assert self.gamma_max * dt < .5, 'dt too large for stable integration, please reduce dt or decrease largest gamma'
+        print(f'Your choice of gamma_max={self.gamma_max} ensures stable integration for dt < {round(0.5/self.gamma_max.item(),4)}')
 
     def g(self,t):
         if self.K>0:
@@ -220,7 +237,8 @@ class FractionalSchrödingerBridge(nn.Module):
         gamma_ij =  gamma_i + gamma_j
 
         weight = omega_ij/ gamma_ij
-        S = weight * (torch.exp(t*gamma_ij) -torch.exp(s*(gamma_ij))) * torch.exp(-T*gamma_j - t*gamma_i) 
+        #S = weight * (torch.exp(t*gamma_ij) -torch.exp(s*(gamma_ij))) * torch.exp(-T*gamma_j - t*gamma_i) 
+        S = weight * (torch.exp(-(T-t)*gamma_j) - torch.exp(-(T-s)*gamma_j)* torch.exp(- (t-s)*gamma_i))
         return g**2 * (torch.sum(S,axis=(1,2)))
     
     def covYX(self,t,T, omega, gamma, g):
@@ -238,7 +256,8 @@ class FractionalSchrödingerBridge(nn.Module):
         gamma_k = gamma[:,None,:]
 
         weight = omega_k/(gamma_l+gamma_k) #dim of omega_k in X
-        S = weight *(torch.exp(t*(gamma_l+gamma_k)) -1)*torch.exp(-t*gamma_l-T*gamma_k)
+        #S = weight *(torch.exp(t*(gamma_l+gamma_k)) -1)*torch.exp(-t*gamma_l-T*gamma_k)
+        S = weight * (torch.exp(-(T-t)*gamma_k) -torch.exp(-t*gamma_l-T*gamma_k))
 
         return g * torch.sum(S,axis=2)
 
@@ -257,9 +276,11 @@ class FractionalSchrödingerBridge(nn.Module):
         gamma_j = gamma[:,None,:]
         gamma_ij =  gamma_i + gamma_j
 
-        return (torch.exp(-T*gamma_j-t*gamma_i)*(torch.exp(t*gamma_ij)-torch.exp(s*gamma_ij)))/gamma_ij
+        #return (torch.exp(-T*gamma_j-t*gamma_i)*(torch.exp(t*gamma_ij)-torch.exp(s*gamma_ij)))/gamma_ij
+        return (torch.exp(-(T-t)*gamma_j) - torch.exp(-(T-s)*gamma_j)*torch.exp(-(t-s)*gamma_i))/gamma_ij
+        #return (torch.exp(-T*gamma_j-t*gamma_i)*(torch.exp(t*(gamma_i + gamma_j))-torch.exp(s*(gamma_i + gamma_j))))/gamma_ij
 
-    def covZ(self,t,T, omega, gamma, g, s=None, eps=1e-4):
+    def covZ(self,t,T, omega, gamma, g, s=None, eps=1e-3):
 
         # compute cov(X(t),X(T)|Z_s=z) with s<t<=T 
         # expects s,t of shape (batch_size,1)
@@ -279,7 +300,7 @@ class FractionalSchrödingerBridge(nn.Module):
         Sig[:,0,1:] = Sig_xy
         Sig[:,1:,1:] = self.covY(s,t,T, gamma)
 
-        # I_eps = torch.eye(K, K)[None, :, :] * torch.ones((bs, K, K)) * eps * torch.exp(-2 * gamma * t[:,:,0])[:, :, None]
+        # I_eps = torch.eye(K, K)[None, :, :] * torch.ones((bs, K, K)) * eps * torch.exp(-2 * gamma * t)[:, :, None]
         # Sig[:,1:,1:] = Sig[:,1:,1:] + I_eps
         # Sig[:,0,0] += eps
 
@@ -338,16 +359,26 @@ class FractionalSchrödingerBridge(nn.Module):
     
         omega = omega[:,None,:]
         gamma = gamma[:,None,:]
-
-        scale = torch.ones(1,1,self.K+1)#.to(DEVICE)
-
-        print(t.get_device())
-        print(T.get_device())
-        print(gamma.get_device())
-        print(g_max.get_device())
-
+    
+        scale = torch.ones(1,1,self.K+1).to(DEVICE)
         scale[:,:,1:] = omega * self.zeta(t,T, gamma, g_max)
         return scale * score_x[:,:,None]
+    
+    def mu(self,t):
+        return torch.zeros_like(t)
+    
+    def print_approximation_accuracy(self):
+        print('[MA-fBM approximation error]')
+        error_fn = lambda hurst: ma.omega_optimized_2(self.gamma, hurst, self.time_horizon, return_cost='normalized')
+
+        hursts = jnp.linspace(0., 1., 21)
+        _, errors = jax.vmap(error_fn)(hursts)
+        hursts_str = [f'{hurst:.2f}' for hurst in hursts]
+        errors_str = [f'{error:.2f}' for error in errors]
+        print(f'H: {" ".join(hursts_str)}')
+        print(f'E: {" ".join(errors_str)}')
+        return
+
     
     # def mean_scale(self, t):
     #     return torch.exp(self.integral(t))
@@ -410,31 +441,32 @@ class FractionalSchrödingerBridge(nn.Module):
     #     var_c = torch.sum(alpha*corr,dim=-1)
     #     return sigma_t[:,None,None,None], mean, corr, cov_yy, alpha[:,None,None,None,:], var_x[:,None,None,None], var_c[:,None,None,None]
 
-    # def compute_YiYj(self,t):
-    #     sum_gamma = self.gamma_i + self.gamma_j
-    #     return ((1-torch.exp(-t*sum_gamma))/sum_gamma)
+    def compute_YiYj(self,t):
+        t = t[:,:,None]
+        sum_gamma = self.gamma_i + self.gamma_j
+        return ((1-torch.exp(-t*sum_gamma))/sum_gamma)
 
-    # def numpy_compute_YiYj(self,t):
-    #     gamma_i, gamma_j = self.gamma[0,:, None].cpu().numpy(), self.gamma[0,None, :].cpu().numpy()
-    #     return (1 - np.exp(- (gamma_i + gamma_j) * t.cpu().numpy())) / (gamma_i + gamma_j)
+    def numpy_compute_YiYj(self,t):
+        gamma_i, gamma_j = self.gamma[0,:, None].cpu().numpy(), self.gamma[0,None, :].cpu().numpy()
+        return (1 - np.exp(- (gamma_i + gamma_j) * t.cpu().numpy())) / (gamma_i + gamma_j)
 
-    # def func(self,t, S):
-    #     num_k = self.K
-    #     t = torch.as_tensor(t)
-    #     A = np.zeros((num_k + 1, num_k + 1))
-    #     A[0, 0] = 2 * self.mu(t).cpu().numpy()
-    #     A[0, 1:] = - 2 * (self.g(t) * self.omega[0] * self.gamma[0]).cpu().numpy()
-    #     A[1:, 1:] = np.diag((self.mu(t) - self.gamma[0]).cpu().numpy())
-    #     b = np.zeros(num_k + 1)
-    #     b[0] = (self.omega[0].cpu().numpy().sum() * self.g(t).cpu().numpy()) ** 2
-    #     b[1:] = self.g(t).cpu().numpy() * (
-    #                 self.omega[0].cpu().numpy().sum() - self.numpy_compute_YiYj(t) @ (self.omega[0] * self.gamma[0]).cpu().numpy())
+    def func(self,t, S):
+        num_k = self.K
+        t = torch.as_tensor(t)
+        A = np.zeros((num_k + 1, num_k + 1))
+        A[0, 0] = 2 * self.mu(t).cpu().numpy()
+        A[0, 1:] = - 2 * (self.g(t) * self.omega[0] * self.gamma[0]).cpu().numpy()
+        A[1:, 1:] = np.diag((self.mu(t) - self.gamma[0]).cpu().numpy())
+        b = np.zeros(num_k + 1)
+        b[0] = (self.omega[0].cpu().numpy().sum() * self.g(t).cpu().numpy()) ** 2
+        b[1:] = self.g(t).cpu().numpy() * (
+                    self.omega[0].cpu().numpy().sum() - self.numpy_compute_YiYj(t) @ (self.omega[0] * self.gamma[0]).cpu().numpy())
 
-    #     return A @ S + b
+        return A @ S + b
 
-    # def solve_cov_ode(self,t=0.0):
-    #     S_0 = np.zeros(self.K + 1)
-    #     self.approx_sigma = solve_ivp(self.func, (t, 1.), S_0, dense_output=True)
+    def solve_cov_ode(self,t=0.0):
+        S_0 = np.zeros(self.K + 1)
+        self.approx_sigma = solve_ivp(self.func, (t, 1.), S_0, dense_output=True)
 
 #     @abstractmethod
 #     def mu(self,t):
@@ -485,15 +517,15 @@ class FractionalSchrödingerBridge(nn.Module):
 #     def brown_var(self,t):
 #         return t
 
-#     def compute_cov(self,t):
+    def compute_cov(self,t):
 
-#         S = self.approx_sigma.sol(t[:,0,0].cpu().numpy())
-#         cov = np.zeros((self.K + 1, self.K + 1,t.shape[0]))
-#         cov[0, :, :] = S
-#         cov[:, 0, :] = S
-#         sigma_t = torch.from_numpy(cov.astype(np.float32)).to(t.device).permute(2,1,0)
-#         sigma_t[:,1:,1:] = self.compute_YiYj(t)
-#         return sigma_t[:,None,None,None,:,:]
+        S = self.approx_sigma.sol(t[:,0].cpu().numpy())
+        cov = np.zeros((self.K + 1, self.K + 1,t.shape[0]))
+        cov[0, :, :] = S
+        cov[:, 0, :] = S
+        sigma_t = torch.from_numpy(cov.astype(np.float32)).to(t.device).permute(2,1,0)
+        sigma_t[:,1:,1:] = self.compute_YiYj(t)
+        return sigma_t
 
 #     def cov(self, t):
 #         if len(t.shape)==0:
@@ -638,7 +670,7 @@ class FractionalSchrödingerBridge(nn.Module):
 
 
 
-def sample_from_batch_multivariate_normal(cov_matrix, c=2,h=1,w=1,batch_size=128, aug_dim=6, eps=1e-5,device='cpu'):
+def sample_from_batch_multivariate_normal(cov_matrix, c=2,h=1,w=1,batch_size=128, aug_dim=6, device='cpu'):
 
     # Ensure covariance matrix has shape [batch_size, dim, dim]
     assert cov_matrix.shape == (batch_size, aug_dim, aug_dim), "Covariance matrix must have shape [batch_size, dim, dim]"
@@ -651,7 +683,7 @@ def sample_from_batch_multivariate_normal(cov_matrix, c=2,h=1,w=1,batch_size=128
 
     # Sample from the distribution
     n_samples = int(c*h*w)
-    samples = mvn.sample(sample_shape=(n_samples,))  # Samples will have shape [n_samples, batch_size, dim]
+    samples = mvn.sample(sample_shape=(n_samples,))  # Samples will have shape [n_samples, batch_size, dim]        
     samples = einops.rearrange(samples, '(C H W) B K -> B C H W K', C=c, H=h, W=w)
 
     return samples

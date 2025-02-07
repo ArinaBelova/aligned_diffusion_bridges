@@ -36,7 +36,8 @@ class AlignedSB(nn.Module):
             data.pos_t = sample_from_brownian_bridge(data.t, x_0=data.pos_0, x_T=data.pos_T)
 
         drift_x = self.sde_drift(data.pos_t, data.t)
-        doobs_score_x = self.doobs_h_score(data.pos_t, data.pos_T, drift_x, data.t)
+        #doobs_score_x = self.doobs_h_score(data.pos_t, data.pos_T, drift_x, data.t)
+        doobs_score_x = self.doobs_h_score(data.pos_xt, data.pos_T, drift_x, data.t)
         
         if data.pos_T is not None:
             drift_x_T = self.sde_drift(data.pos_T, torch.ones_like(data.t))

@@ -74,7 +74,8 @@ class BrownianBridgeTransform(BaseTransform):
 
     def __call__(self, data):
         bs = data.pos_0.shape[0]
-        t = torch.rand((bs, 1))
+        t = (torch.rand((bs, 1)) * (1-(1e-3))) + 1e-3
+        #t = torch.rand((bs, 1)) 
         return self.apply_transform(data, t)
 
     def apply_transform(self, data, t):
@@ -93,10 +94,12 @@ class BrownianBridgeTransform(BaseTransform):
             x = z[:,:,0]
             Y = z[:,:,1:]
             data.pos_t = dif.input_transform(x,Y,t,dif.T,dif.omega, dif.gamma,dif.g_max)
+            data.pos_xt = x
             data.t = t
             data.cond_var_t = dif.cond_var(t,dif.T,dif.omega,dif.gamma,dif.g_max)
         else:
             data.pos_t = sample_from_brownian_bridge(g=self.dif.g, t=t, x_0=data.pos_0, x_T=data.pos_T, t_min=0.0, t_max=1.0)
+            data.pos_xt = data.pos_t
             data.t = t
         return data
 
