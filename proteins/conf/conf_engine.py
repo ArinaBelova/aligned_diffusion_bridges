@@ -43,7 +43,8 @@ class ConfEngine:
         self.model = model.to(DEVICE)
         self.model.eval()
         self.inference_steps = inference_steps
-        
+
+        inference_steps = 100
         t_schedule = get_t_schedule(inference_steps=inference_steps)
         self.t_schedule = torch.from_numpy(t_schedule)
         self.dt = self.t_schedule[1] - self.t_schedule[0]
@@ -56,6 +57,7 @@ class ConfEngine:
                                             norm = args.norm)
         self.dif = g_fn
 
+
     def generate_conformation(self, data):
 
         data.pos_T = None
@@ -64,15 +66,14 @@ class ConfEngine:
 
         if self.dif.K > 0:        
             pos = torch.cat([data.pos_orig[:,:,None],torch.zeros(data.pos_orig.shape[0], data.pos_orig.shape[1], self.dif.K, device=DEVICE)],dim=-1)
-
         else:
             pos = data.pos_orig.clone().to(DEVICE)
 
         trajectory = []
 
         with torch.no_grad():
-            for t_idx in range(self.inference_steps):
-
+            #for t_idx in range(self.inference_steps):
+            for t_idx in range(self.inference_steps+1):
                 if self.dif.K > 0:
 
                     t = self.t_schedule[t_idx].float()
@@ -108,9 +109,11 @@ class ConfEngine:
                     t = self.t_schedule[t_idx]
 
                     data.t = t * data.x.new_ones(data.num_nodes)
-                    g_t = data.x.new_tensor(self.g_fn(t)).float()
+                    g_t = data.x.new_tensor(self.dif.g(t)).float()
 
-                    drift = self.model.run_drift(data)
+                    #std = 1.0 #orignal
+                    std = torch.sqrt((self.dif.g_max**2)*(1-t)) if t<1 else 1.0
+                    drift = self.model.run_drift(data) / std
                     diffusion = g_t * torch.randn_like(data.pos_t) * torch.sqrt(self.dt)
 
                     dpos = torch.square(g_t) * drift * self.dt + diffusion
@@ -119,7 +122,12 @@ class ConfEngine:
                     trajectory.append(pos_t)
 
         trajectory = torch.stack(trajectory, dim=0)
-        return trajectory[-1,:,:,0], trajectory[:,:,0]
+
+        if self.dif.K>0:
+            return trajectory[-1,:,:,0], trajectory[:,:,0]
+        else:
+            return trajectory[-1], trajectory
+
     
     def generate_conformations(self, data, apply_mean: bool = True):
         data = data.to(DEVICE)

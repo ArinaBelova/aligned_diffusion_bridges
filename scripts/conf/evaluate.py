@@ -39,6 +39,7 @@ def prepare_inference_setup(args):
     model.load_state_dict(model_dict)
     model.to(DEVICE)
 
+    print('In prepare inference setup',args.data_dir)
     # Data Loader
     resolution = model_args.resolution
     processed_dir = f"{args.data_dir}/processed/{args.dataset}/resolution={resolution}"

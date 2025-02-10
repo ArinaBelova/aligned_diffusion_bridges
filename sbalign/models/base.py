@@ -29,19 +29,30 @@ class AlignedSB(nn.Module):
                                      activation=activation, dropout_p=dropout_p,
                                      use_drift_in_doobs=use_drift_in_doobs)
 
+        sde_drift_total_params = sum(p.numel() for p in self.sde_drift.parameters())
+        print(f'Initialized sde_drift with {sde_drift_total_params} parameters')
+
+        doobs_h_score_total_params = sum(p.numel() for p in self.doobs_h_score.parameters())
+        print(f'Initialized doobs_h_score with {doobs_h_score_total_params} parameters')
+
+        #self.doobs_h_score = lambda x,y,z,t: None
+
     def forward(self, data):
         if data.pos_t is None:
             assert data.pos_T is not None
             print("Sampling from brownian bridge...")
             data.pos_t = sample_from_brownian_bridge(data.t, x_0=data.pos_0, x_T=data.pos_T)
+            print('in forward and  data.pos_t is None')
 
         drift_x = self.sde_drift(data.pos_t, data.t)
-        #doobs_score_x = self.doobs_h_score(data.pos_t, data.pos_T, drift_x, data.t)
-        doobs_score_x = self.doobs_h_score(data.pos_xt, data.pos_T, drift_x, data.t)
+        doobs_score_x = self.doobs_h_score(data.pos_t, data.pos_T, drift_x, data.t)
+        #doobs_score_x = self.doobs_h_score(data.pos_xt, data.pos_T, drift_x, data.t)
+        print('in forward')
         
         if data.pos_T is not None:
             drift_x_T = self.sde_drift(data.pos_T, torch.ones_like(data.t))
             doobs_score_x_T = self.doobs_h_score(data.pos_T, data.pos_T, drift_x_T, torch.ones_like(data.t))
+            print('in forward and data.pos_T is not None')
             return drift_x, doobs_score_x, doobs_score_x_T
 
         return drift_x, doobs_score_x
@@ -54,10 +65,11 @@ class AlignedSB(nn.Module):
 
             # Expand to x-shape except for last dim
             t = t.expand(*x.shape[:-1], 1)
-
+        print('in run drift')
         drift = self.sde_drift(x, t)
         return drift
 
     def run_doobs_score(self, x, x_T, t):
+        print('in run doobs score')
         drift = self.sde_drift(x, t)
         return self.doobs_h_score(x, x_T, drift, t)

@@ -213,6 +213,7 @@ def inference_epoch_conf(model, g, orig_dataset, inference_steps: int = 100,
     )
 
     monitor = ProgressMonitor()
+
     loader = DataLoader(dataset=dataset, batch_size=1, shuffle=False)
 
     traj_dict = {}

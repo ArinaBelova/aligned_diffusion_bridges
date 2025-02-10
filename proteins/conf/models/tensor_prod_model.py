@@ -121,10 +121,22 @@ class ConfTensorProductModel(nn.Module):
 
             self.conv_layers = nn.ModuleList(conv_layers)
 
+            '''original'''
+            # self.final_conv_layer = TensorProductConvLayer(
+            #     in_irreps=conv_layers[-1].out_irreps,
+            #     sh_irreps=self.sh_irreps,
+            #     out_irreps=f'2x1o + 2x1e',
+            #     edge_fdim=3 * n_s,
+            #     h_dim=2 * n_s,
+            #     residual=False,
+            #     dropout=dropout_p,
+            # )
+
+            '''M'''
             self.final_conv_layer = TensorProductConvLayer(
                 in_irreps=conv_layers[-1].out_irreps,
                 sh_irreps=self.sh_irreps,
-                out_irreps=f'2x1o + 2x1e',
+                out_irreps=f'1x1o + 1x1e',
                 edge_fdim=3 * n_s,
                 h_dim=2 * n_s,
                 residual=False,
@@ -146,10 +158,18 @@ class ConfTensorProductModel(nn.Module):
 
         # Add final convolution layer to predict drift and doobs
         edge_attr_final = torch.cat([edge_attr, x[src, :self.n_s], x[dst, :self.n_s]], dim=-1)
-        global_pred = self.final_conv_layer(x, edge_index, edge_attr_final, edge_sh)
 
-        drift_pred = global_pred[:, :3]+ global_pred[:, 6:9]
-        doobs_h_pred = global_pred[:, 3:6] + global_pred[:, 9:]
+        '''original'''
+        # global_pred = self.final_conv_layer(x, edge_index, edge_attr_final, edge_sh) #global_pred is of shape (something,12)
+
+        # drift_pred = global_pred[:, :3]+ global_pred[:, 6:9] 
+        # doobs_h_pred = global_pred[:, 3:6] + global_pred[:, 9:]
+
+        '''M'''
+        global_pred = self.final_conv_layer(x, edge_index, edge_attr_final, edge_sh)
+        drift_pred = global_pred[:, :3]+ global_pred[:, 3:6] 
+        doobs_h_pred = drift_pred
+
         return drift_pred.expand(x.shape[0], 3), doobs_h_pred.expand(x.shape[0], 3), None
 
     def build_graph(self, data, pos_to_use: str = "current"):

@@ -4,7 +4,7 @@ import torch
 import pandas as pd
 
 import os
-os.chdir("/home/fe/belova/projects/bridges/aligned_diffusion_bridges") 
+os.chdir("/home/fe/nobis/projects/bridges/aligned_diffusion_bridges") 
 import sys
 sys.path.append(os.getcwd())
 
@@ -41,8 +41,8 @@ def args():
     ap.add_argument("--runs", type=int, default=1)
     ap.add_argument("--num_aug", type=list_of_ints, default=[0, 1, 2, 3, 4, 5]) 
     ap.add_argument("--hurst", type=list_of_floats, default=[0.5,0.9,0.8,0.7,0.6,0.4,0.3,0.2,0.1]) 
-    ap.add_argument("--n_epoch", type=int, default=1) 
-    ap.add_argument("--samples_num", type=int, default=100) 
+    ap.add_argument("--n_epoch", type=int, default=20) 
+    ap.add_argument("--samples_num", type=int, default=10000) 
     ap.add_argument("--norm", type=str2bool, default=True, help='whether to normalize the terminal variance of the diffusion process across all values of H')
     return ap
 

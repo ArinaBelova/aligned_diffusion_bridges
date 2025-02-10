@@ -216,7 +216,7 @@ class BrownianBridgeTransform(BaseTransform):
         if data is None:
             return None
         
-        t = np.random.uniform()
+        t = (np.random.uniform() * (1-(1e-3)))
 
         bs = data.pos_0.shape[0]
         ch = data.pos_0.shape[1]

@@ -26,9 +26,11 @@ def loss_function_sbalign(
     assert data.t.max().item() <= t_max
 
     if K > 0:
-        t_diff = data.cond_var_t
+        #t_diff = data.cond_var_t #original
+        t_diff = torch.sqrt(data.cond_var_t)
     else:
-        t_diff = (beta(g, 1, steps_num) - beta(g, data.t, steps_num)).to(DEVICE)
+        #t_diff = (beta(g, 1, steps_num) - beta(g, data.t, steps_num)).to(DEVICE)
+        t_diff = torch.sqrt((beta(g, 1, steps_num) - beta(g, data.t, steps_num)).to(DEVICE)) #original
 
     x_diff = (data.pos_T - data.pos_t)
 
@@ -36,7 +38,7 @@ def loss_function_sbalign(
 
     bb_drift_true = (x_diff) / t_diff
     #print("bb_drift_true ", bb_drift_true)
-    bb_drift_pred = drift_x_pred + doobs_score_x_pred
+    bb_drift_pred = drift_x_pred #+ doobs_score_x_pred
 
     #print("drift_x_pred is ", drift_x_pred)
     criterion = nn.MSELoss()
@@ -44,19 +46,19 @@ def loss_function_sbalign(
     dt = 1/steps_num
     bb_loss = criterion(bb_drift_pred, bb_drift_true) * dt
 
-    if doobs_score_xT_pred is not None:
-        reg_loss_T = (doobs_score_xT_pred ** 2).sum(dim=-1).mean()
-    else:
-        reg_loss_T = torch.tensor(0.0, requires_grad=True)
-    reg_loss_t = (doobs_score_x_pred ** 2).sum(dim=-1).mean()
+    # if doobs_score_xT_pred is not None:
+    #     reg_loss_T = (doobs_score_xT_pred ** 2).sum(dim=-1).mean()
+    # else:
+    #     reg_loss_T = torch.tensor(0.0, requires_grad=True)
+    # reg_loss_t = (doobs_score_x_pred ** 2).sum(dim=-1).mean()
 
-    loss = drift_weight * bb_loss + reg_weight_T * reg_loss_T + reg_weight_t * reg_loss_t
+    loss = drift_weight * bb_loss #+ reg_weight_T * reg_loss_T + reg_weight_t * reg_loss_t
     
     loss_dict = {
         "loss": loss.item(), 
         "bb_loss": bb_loss.item(),
-        "reg_loss_T": reg_loss_T.item(), 
-        "reg_loss_t": reg_loss_t.item()
+        # "reg_loss_T": reg_loss_T.item(), 
+        # "reg_loss_t": reg_loss_t.item()
     }
 
     for key, value in loss_dict.items():
@@ -79,6 +81,8 @@ def loss_function_docking(
     ):
 
     assert data["ligand"].t.max().item() <= t_max
+
+    print('we are in loss_function_docking',flush=True)
 
     t_diff = (beta(g, 1, steps_num) - beta(g, data["ligand"].t, steps_num)).to(DEVICE)
     x_diff = (data["ligand"].pos_T - data["ligand"].pos_t)
@@ -129,31 +133,38 @@ def loss_function_conf(
     
     mean_dims = (0, 1) if apply_mean else 1
 
+    #print('we are in loss_function_conf',flush=True)
     assert data.t.max().item() <= t_max
     if K > 0:
-        beta_t_diff = data.cond_var_t
+        #beta_t_diff = data.cond_var_t
+        beta_t_diff = torch.sqrt(data.cond_var_t)
     else:
-        beta_t_diff = (beta(g, 1, steps_num) - beta(g, data.t, steps_num)).to(DEVICE)
+        #beta_t_diff = (beta(g, 1, steps_num) - beta(g, data.t, steps_num)).to(DEVICE)
+        beta_t_diff = torch.sqrt((beta(g, 1, steps_num) - beta(g, data.t, steps_num)).to(DEVICE))
+
     x_diff = (data.pos_T - data.pos_t)
 
     bb_drift_true = (x_diff) / beta_t_diff
-    bb_drift_pred = drift_x_pred + doobs_score_x_pred
+
+    #bb_drift_pred = drift_x_pred + doobs_score_x_pred
+    bb_drift_pred = drift_x_pred #+ doobs_score_x_pred
 
     bb_loss = ((bb_drift_pred - bb_drift_true) ** 2).mean(mean_dims)
 
-    if doobs_score_xT_pred is not None:
-        reg_loss_T = (doobs_score_xT_pred ** 2).mean(mean_dims)
-    else:
-        reg_loss_T = torch.tensor(0.0, requires_grad=True)
-    reg_loss_t = (doobs_score_x_pred ** 2).mean(mean_dims)
+    # if doobs_score_xT_pred is not None:
+    #     reg_loss_T = (doobs_score_xT_pred ** 2).mean(mean_dims)
+    # else:
+    #     reg_loss_T = torch.tensor(0.0, requires_grad=True)
+    # reg_loss_t = (doobs_score_x_pred ** 2).mean(mean_dims)
 
-    loss = drift_weight * bb_loss + reg_weight_T * reg_loss_T + reg_weight_t * reg_loss_t
+    #loss = drift_weight * bb_loss + reg_weight_T * reg_loss_T + reg_weight_t * reg_loss_t
+    loss = drift_weight * bb_loss #+ reg_weight_T * reg_loss_T + reg_weight_t * reg_loss_t
     
     loss_dict = {
         "loss": loss.item(), 
         "bb_loss": bb_loss.item(),
-        "reg_loss_T": reg_loss_T.item(), 
-        "reg_loss_t": reg_loss_t.item()
+        # "reg_loss_T": reg_loss_T.item(), 
+        # "reg_loss_t": reg_loss_t.item()
     }
 
     for key, value in loss_dict.items():

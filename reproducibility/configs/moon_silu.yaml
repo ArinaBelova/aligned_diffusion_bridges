@@ -24,8 +24,8 @@ h_dim: 64
 n_layers: 2
 activation: silu
 dropout_p: 0.1
-run_name: apgxtmrnd
-n_epochs: 1
+run_name: kgvjiimdr
+n_epochs: 20
 use_grad_noise: false
 drift_weight: 1.0
 reg_weight: 1.0
@@ -33,9 +33,9 @@ reg_weight_T: 1.0
 reg_weight_t: 1.0
 diffusivity_schedule: fbb
 max_diffusivity: 0.7
-H: 0.1
-K: 4
-norm: true
+H: 0.3
+K: 1
+norm: false
 use_drift_in_doobs: true
 optim_name: adamw
 lr: 0.001

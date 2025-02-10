@@ -47,3 +47,6 @@ sb_align/data/
 reproducibility/moon/model/*
 reproducibility/*
 experiments/wand/*
+*.pt
+logs/*
+sb_align/data/*

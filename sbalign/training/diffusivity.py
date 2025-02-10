@@ -32,7 +32,7 @@ def decreasing_g(t, g_max):
     g_min = .1
     return g_max - np.square(t) * (g_max-g_min)
 
-def fbb(H, K=5, norm=False, g_max=1.0, gamma_max=20.0,device="cpu"):
+def fbb(H, K=5, norm=False, g_max=1.0, gamma_max=40.0,device="cpu"):
     print('init H in fbb',H)
     print('init K fbb',K)
     return FractionalSchrödingerBridge(H=H,K=K,norm=norm,g_max=g_max,gamma_max=gamma_max,device=device)
@@ -354,15 +354,22 @@ class FractionalSchrödingerBridge(nn.Module):
     def score(self, score_x, t,T, omega, gamma, g_max):
 
         # expects the output of a score model of dimension (batch_size1,batch_size2)
+
+        std = torch.sqrt(self.cond_var(t,T,omega,gamma,g_max))
+
         t = t[:,:,None]
         T = T[:,:,None]
     
         omega = omega[:,None,:]
         gamma = gamma[:,None,:]
-    
+
+        if torch.any((t-T)==0):
+            std = torch.tensor(1.0)
+
+        #std = 1.0
         scale = torch.ones(1,1,self.K+1).to(DEVICE)
         scale[:,:,1:] = omega * self.zeta(t,T, gamma, g_max)
-        return scale * score_x[:,:,None]
+        return scale * score_x[:,:,None] / std
     
     def mu(self,t):
         return torch.zeros_like(t)
