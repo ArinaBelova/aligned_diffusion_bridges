@@ -88,6 +88,7 @@ class ExponentialMovingAverage:
 
 
 def get_optimizer(model, optim_name: str = 'adamw', lr: float = 0.001, weight_decay: float = 0.001):
+
     if optim_name == "adamw":
         optimizer = optim.AdamW(params=filter(lambda p: p.requires_grad, model.parameters()), 
                               lr=lr, weight_decay=weight_decay)
@@ -106,9 +107,11 @@ def get_scheduler(optimizer, scheduler_name: str = 'plateau', scheduler_mode: st
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, 
                                                          mode=scheduler_mode, factor=factor,
                                                          patience=patience, min_lr=min_lr)
-    else:
+    else:   
         scheduler = None
 
+    #scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer, max_lr=1e-2, epochs=100, steps_per_epoch=6455)
+    #print(type(scheduler ),flush=True)
     return scheduler
 
 

@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from functools import partial
+import time
 
 from sbalign.utils.sb_utils import beta
 from sbalign.training.diffusivity import get_diffusivity_schedule
@@ -44,6 +45,7 @@ def loss_function_sbalign(
     criterion = nn.MSELoss()
 
     dt = 1/steps_num
+
     bb_loss = criterion(bb_drift_pred, bb_drift_true) * dt
 
     # if doobs_score_xT_pred is not None:
@@ -136,18 +138,22 @@ def loss_function_conf(
     #print('we are in loss_function_conf',flush=True)
     assert data.t.max().item() <= t_max
     if K > 0:
-        #beta_t_diff = data.cond_var_t
-        beta_t_diff = torch.sqrt(data.cond_var_t)
+        beta_t_diff = data.cond_var_t
+        #beta_t_diff = torch.sqrt(data.cond_var_t)
     else:
+        # print('original beta_t_diff',beta_t_diff.shape,flush=True)
+        # print('data:t',data.t.shape,flush=True)
+        # print('g(data.t)',g(data.t).shape,flush=True)
+        beta_t_diff = ((g(data.t)**2)*(1-data.t)).unsqueeze(-1)
         #beta_t_diff = (beta(g, 1, steps_num) - beta(g, data.t, steps_num)).to(DEVICE)
-        beta_t_diff = torch.sqrt((beta(g, 1, steps_num) - beta(g, data.t, steps_num)).to(DEVICE))
-
+        #beta_t_diff = torch.sqrt((beta(g, 1, steps_num) - beta(g, data.t, steps_num)).to(DEVICE))
     x_diff = (data.pos_T - data.pos_t)
 
     bb_drift_true = (x_diff) / beta_t_diff
 
     #bb_drift_pred = drift_x_pred + doobs_score_x_pred
     bb_drift_pred = drift_x_pred #+ doobs_score_x_pred
+    #bb_drift_pred = beta_t_diff*drift_x_pred
 
     bb_loss = ((bb_drift_pred - bb_drift_true) ** 2).mean(mean_dims)
 

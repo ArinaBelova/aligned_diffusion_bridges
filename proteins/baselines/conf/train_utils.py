@@ -149,6 +149,7 @@ def parse_train_args(cmd_args=None):
                         help="Config file to load args from. args will be overwritten")
     
     parser.add_argument("--task", default="conf")
+    parser.add_argument("--max_diffusivity", default=1.0,type=float)
 
    # wandb
     parser.add_argument("--wandb_entity", default=WANDB_ENTITY)

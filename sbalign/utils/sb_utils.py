@@ -53,6 +53,8 @@ def get_timestep_embedding(embedding_type, embedding_dim, embedding_scale=1000):
 
 
 def get_t_schedule(inference_steps, t_max=1.0):
+    print('inference_steps',inference_steps)
+    print('t_max:',t_max)
     return np.linspace(0, t_max, inference_steps + 1)
     #return np.linspace(1e-3, t_max, inference_steps + 1,endpoint=False)
     #return np.linspace(0, t_max-1e-3, inference_steps + 1)

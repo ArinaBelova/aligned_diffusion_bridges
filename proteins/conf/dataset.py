@@ -11,6 +11,7 @@ import torch.utils.data
 from torch_geometric.data import Dataset
 from torch_geometric.loader import DataLoader
 from torch_geometric.transforms import BaseTransform
+import time
 
 from proteins.conf.utils import (
     parse_biopandas,
@@ -216,11 +217,11 @@ class BrownianBridgeTransform(BaseTransform):
         if data is None:
             return None
         
-        t = (np.random.uniform() * (1-(1e-3)))
-
+        #t = (np.random.uniform() * (1-(1e-3)))
+        t = np.random.uniform() * self.dif.t_max
         bs = data.pos_0.shape[0]
         ch = data.pos_0.shape[1]
-        
+
         #print(f"BATCH SIZE IS {bs}")
         #print(f"CHANNEL DIM IS {ch}")
 
@@ -254,6 +255,7 @@ class BrownianBridgeTransform(BaseTransform):
             #data.t = t
 
             #print(f"shape that goes to the bloody function: {data.t.shape}")
+
             z = dif.sample_pinned(data.t, dif.T, data.pos_0, data.pos_T, dif.omega, dif.gamma, dif.g_max)
 
             x = z[:,:,0]
@@ -265,7 +267,6 @@ class BrownianBridgeTransform(BaseTransform):
             data.pos_t = sample_from_brownian_bridge(g=self.dif.g, t=t, x_0=data.pos_0, x_T=data.pos_T, t_min=0.0, t_max=1.0)
             #data.aug_pos_0 = data.pos_0
             #data.aug_pos_T = data.pos_T
-
         #print(f"AFTER THE TRANSFORM DATA: {data.pos_t.shape}", flush=True)
         return data
 

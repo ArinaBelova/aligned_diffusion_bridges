@@ -28,6 +28,7 @@ def prepare_inference_setup(args):
     with open(f'{args.log_dir}/{args.run_name}/config_train.yml') as f:
         model_args = argparse.Namespace(**yaml.full_load(f))
 
+
     # Model
     if args.method == "sbalign":
         model = build_conf_model(model_args)
@@ -138,6 +139,7 @@ def parse_args():
     parser.add_argument("--dataset", default="d3pm", type=str)
     parser.add_argument("--n_samples", default=1, type=int)
     parser.add_argument("--inference_steps", default=100, type=int)
+    parser.add_argument("--max_diffusivity", default=1.0, type=float)
 
     args = parser.parse_args()
     return args
@@ -145,7 +147,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-
+    
     loader, model, engine = prepare_inference_setup(args=args)
 
     metrics = []

@@ -144,7 +144,7 @@ class ConfTensorProductModel(nn.Module):
             )
 
     def forward(self, data):
-        x, edge_index, edge_attr, edge_sh = self.build_graph(data, pos_to_use="current")
+        x, edge_index, edge_attr, edge_sh = self.build_graph(data, pos_to_use="concat")
         src, dst = edge_index
         x = self.node_embedding(x)
         edge_attr = self.edge_embedding(edge_attr)
@@ -162,7 +162,7 @@ class ConfTensorProductModel(nn.Module):
         '''original'''
         # global_pred = self.final_conv_layer(x, edge_index, edge_attr_final, edge_sh) #global_pred is of shape (something,12)
 
-        # drift_pred = global_pred[:, :3]+ global_pred[:, 6:9] 
+        # drift_pred = global_pred[:, :3]+ global_pred[:, 6:9] + data.pos_0
         # doobs_h_pred = global_pred[:, 3:6] + global_pred[:, 9:]
 
         '''M'''
@@ -181,8 +181,34 @@ class ConfTensorProductModel(nn.Module):
             t_emb = self.timestep_emb_fn(torch.ones_like(data.t).unsqueeze(1))
         elif pos_to_use == "init":
             pos = data.pos_0
-
-        node_attr = torch.cat([data.x, t_emb], dim=-1)
+        elif pos_to_use == "mixed":
+            pos = data.pos_t
+            t_emb = self.timestep_emb_fn(data.t)
+            pos_0 = data.pos_0
+        elif pos_to_use == "difference-0":
+            pos = data.pos_t - data.pos_0
+            t_emb = self.timestep_emb_fn(data.t)
+            #does not work well
+        elif pos_to_use == "current-diff":
+            pos = data.pos_t
+            pos_delta = data.pos_t - data.pos_0
+            t_emb = self.timestep_emb_fn(data.t)
+            #does not work well
+        elif pos_to_use == "concat":
+            pos = torch.cat([data.pos_0, data.pos_t], dim=-1)
+            t_emb = self.timestep_emb_fn(data.t)
+                    
+        if pos_to_use == "mixed":
+            node_attr = torch.cat([pos_0, data.x, t_emb], dim=-1)
+            # data.pos_0 of shape torch.Size([307, 3])
+            # data.x of shape torch.Size([307, 145])
+            # t_emb of shape torch.Size([307, 32])
+            # print('node_attr_augmented',node_attr.shape,flush=True)
+            # print('node_attr',torch.cat([data.x, t_emb], dim=-1).shape,flush=True)
+        elif pos_to_use == "current-diff":
+            node_attr = torch.cat([data.x, pos_delta, t_emb], dim=-1)
+        else:
+            node_attr = torch.cat([data.x, t_emb], dim=-1)
 
         edge_index = radius_graph(
             x=pos, r=self.max_radius, max_num_neighbors=self.max_neighbors,

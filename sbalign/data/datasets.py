@@ -74,7 +74,7 @@ class BrownianBridgeTransform(BaseTransform):
 
     def __call__(self, data):
         bs = data.pos_0.shape[0]
-        t = (torch.rand((bs, 1)) * (1-(1e-3))) + 1e-3
+        t = torch.rand((bs, 1)) * self.dif.t_max
         #t = torch.rand((bs, 1)) 
         return self.apply_transform(data, t)
 

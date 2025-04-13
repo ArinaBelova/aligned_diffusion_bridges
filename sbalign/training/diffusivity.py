@@ -32,7 +32,7 @@ def decreasing_g(t, g_max):
     g_min = .1
     return g_max - np.square(t) * (g_max-g_min)
 
-def fbb(H, K=5, norm=False, g_max=1.0, gamma_max=40.0,device="cpu"):
+def fbb(H, K=5, norm=False, g_max=1.0, gamma_max=20.0,device="cpu"):
     print('init H in fbb',H)
     print('init K fbb',K)
     return FractionalSchrödingerBridge(H=H,K=K,norm=norm,g_max=g_max,gamma_max=gamma_max,device=device)
@@ -64,7 +64,7 @@ class FractionalSchrödingerBridge(nn.Module):
 
     """Abstract class for an approximate fractional schrödinger bridge process"""
 
-    def __init__(self, H=0.5, K=5, norm=False, g_max=1.0, gamma_max=40.0, gamma_min=0.1, approx_cov=False, T=1.0, pd_eps=1e-4, device="cpu"):
+    def __init__(self, H=0.5, K=5, norm=False, g_max=1.0, gamma_max=20.0, gamma_min=0.1, approx_cov=False, T=1.0, pd_eps=1e-4, threshold=1e-3, device="cpu"):
         super(FractionalSchrödingerBridge, self).__init__()
 
         """parameters of fBM approximation"""
@@ -115,6 +115,8 @@ class FractionalSchrödingerBridge(nn.Module):
         self.update_omega(omega,A=A,b=b)
         self.check_dt(self.dt)
         self.g_max =  torch.tensor(g_max)
+        #self.g_max = torch.sqrt(torch.tensor(0.1370))
+        #self.g_max = 0.1
         self.norm = norm
 
         if self.K>0:
@@ -142,6 +144,8 @@ class FractionalSchrödingerBridge(nn.Module):
             G = torch.ones(K+1)
             G[0] = torch.sum(self.omega) * self.g_max
             self.register_buffer("G_t", G)
+        
+        self.t_max = self.largest_t(self.omega,self.gamma,self.g_max,threshold=threshold,T=1.0)
 
     def update_omega(self,omega,A=None,b=None):
 
@@ -220,6 +224,30 @@ class FractionalSchrödingerBridge(nn.Module):
 
         return self.covX(s,t,t, omega, gamma, g)[:,None]
     
+    def largest_t(self,omega,gamma,g_max,threshold=1e-3,T=1.0,steps=10000,start_from=0.7):
+
+        """
+        Find largest t_max with \sigma_{1|t_{max}} > threshold such that 1/\sigma_{1|t} < 1/threshold for all t\in[0,t_max]
+        """
+
+        print(f'Calculating largest t for H={self.H} and K={self.K}')
+        t_max = torch.tensor(1e-3)
+        T = torch.tensor(T,device=omega.device)
+        for t in torch.linspace(start_from,T,steps=steps):
+            if self.K==0:
+                sigma_Tt = (g_max**2)*(1-t)*t
+                if sigma_Tt < threshold:
+                    t_max = t
+                    break
+            else:
+                sigma_Tt = self.cond_var(t[None,None].to(omega.device),T[None,None],omega,gamma,g_max)
+                if sigma_Tt < threshold:
+                    print(f'Setting t_max={t}.')
+                    t_max = t
+                    break
+        print(f'Setting t_max={t_max}')
+        return t_max
+
     def covX(self,s,t,T, omega, gamma, g):
 
         # compute cov(X(t),X(T)|Z_s=z) with s<t<=T 
@@ -355,7 +383,7 @@ class FractionalSchrödingerBridge(nn.Module):
 
         # expects the output of a score model of dimension (batch_size1,batch_size2)
 
-        std = torch.sqrt(self.cond_var(t,T,omega,gamma,g_max))
+        #std = torch.sqrt(self.cond_var(t,T,omega,gamma,g_max))
 
         t = t[:,:,None]
         T = T[:,:,None]
@@ -366,7 +394,7 @@ class FractionalSchrödingerBridge(nn.Module):
         if torch.any((t-T)==0):
             std = torch.tensor(1.0)
 
-        #std = 1.0
+        std = 1.0
         scale = torch.ones(1,1,self.K+1).to(DEVICE)
         scale[:,:,1:] = omega * self.zeta(t,T, gamma, g_max)
         return scale * score_x[:,:,None] / std

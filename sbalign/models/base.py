@@ -35,8 +35,6 @@ class AlignedSB(nn.Module):
         doobs_h_score_total_params = sum(p.numel() for p in self.doobs_h_score.parameters())
         print(f'Initialized doobs_h_score with {doobs_h_score_total_params} parameters')
 
-        #self.doobs_h_score = lambda x,y,z,t: None
-
     def forward(self, data):
         if data.pos_t is None:
             assert data.pos_T is not None

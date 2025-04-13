@@ -103,6 +103,7 @@ def parse_train_args(cmd_args=None):
     # Training
     parser.add_argument("--run_name", default=None, type=str, help="Name of training run.")
     parser.add_argument("--n_epochs", default=10, type=int, help="Number of training epochs.")
+    parser.add_argument("--more_inference_steps_from_epochs", default=10, type=int, help="Number of training epochs.")
     parser.add_argument("--use_grad_noise", action='store_true', help="Whether to use gradient noise during training")
     parser.add_argument("--drift_weight", default=1.0, type=float, help="Weight on the Loss term from drift matching")
     parser.add_argument("--reg_weight", default=1.0, type=float, help="Weight for Doobs-score regularizer")

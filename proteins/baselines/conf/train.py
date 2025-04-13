@@ -28,7 +28,7 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
     loss_fn = loss_fn_from_args(args)
 
     logs = {'val_loss': math.inf, "val_inference_rmsd": math.inf}
-
+    
     for epoch in range(args.n_epochs):
         log_dict = {}
         

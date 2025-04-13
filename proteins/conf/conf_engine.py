@@ -42,9 +42,8 @@ class ConfEngine:
         
         self.model = model.to(DEVICE)
         self.model.eval()
+        print(f'Sampling with steps={inference_steps}')
         self.inference_steps = inference_steps
-
-        inference_steps = 100
         t_schedule = get_t_schedule(inference_steps=inference_steps)
         self.t_schedule = torch.from_numpy(t_schedule)
         self.dt = self.t_schedule[1] - self.t_schedule[0]
@@ -70,12 +69,11 @@ class ConfEngine:
             pos = data.pos_orig.clone().to(DEVICE)
 
         trajectory = []
-
         with torch.no_grad():
-            #for t_idx in range(self.inference_steps):
-            for t_idx in range(self.inference_steps+1):
+            for t_idx in range(self.inference_steps):
+            #for t_idx in range(self.inference_steps+1):
                 if self.dif.K > 0:
-
+        
                     t = self.t_schedule[t_idx].float()
                     data.t = (t * data.x.new_ones(data.num_nodes))#.float()
                     t = t[None,None].to(DEVICE)
@@ -98,6 +96,8 @@ class ConfEngine:
 
 
                     data.pos_t = self.dif.input_transform(x,Y,t,T,self.dif.omega.to(DEVICE), self.dif.gamma.to(DEVICE),self.dif.g_max.to(DEVICE))
+                    # print('for K>0 - data.t:',data.t.dtype,flush=True)
+                    # print('for K>0 - data.pos_t:',data.pos_t.dtype,flush=True)
                     drift_pos_x = self.model.run_drift(data)
 
                     drift_pos = self.dif.score(drift_pos_x.to(DEVICE),t,T,self.dif.omega.to(DEVICE), self.dif.gamma.to(DEVICE),self.dif.g_max.to(DEVICE))
@@ -106,15 +106,18 @@ class ConfEngine:
                     pos = pos + dpos
                     trajectory.append(pos)
                 else:    
-                    t = self.t_schedule[t_idx]
+                    t = self.t_schedule[t_idx].to(DEVICE)
 
-                    data.t = t * data.x.new_ones(data.num_nodes)
-                    g_t = data.x.new_tensor(self.dif.g(t)).float()
-
-                    #std = 1.0 #orignal
-                    std = torch.sqrt((self.dif.g_max**2)*(1-t)) if t<1 else 1.0
-                    drift = self.model.run_drift(data) / std
-                    diffusion = g_t * torch.randn_like(data.pos_t) * torch.sqrt(self.dt)
+                    data.t = t * data.x.new_ones(data.num_nodes).to(DEVICE)
+                    g_t = data.x.new_tensor(self.dif.g(t)).float().to(DEVICE)
+                    # print('for K=0 - data.t:',data.t.dtype,flush=True)
+                    # print('for K=0 - data.pos_t:',data.pos_t.dtype,flush=True)
+                    std = 1.0 #orignal
+                    #std = torch.sqrt((self.dif.g_max**2)*(1-t)) if t<1 else 1.0
+                    # print('data.t',data.t.dtype)
+                    # print('data.pos_t.',data.pos_t.dtype)
+                    drift = self.model.run_drift(data.to(DEVICE)) / std
+                    diffusion = g_t * torch.randn_like(data.pos_t,device=DEVICE)* torch.sqrt(self.dt).to(DEVICE)
 
                     dpos = torch.square(g_t) * drift * self.dt + diffusion
                     pos_t = data.pos_t  + dpos

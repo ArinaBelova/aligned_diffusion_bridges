@@ -29,6 +29,8 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
     logs = {'val_loss': math.inf, "val_inference_rmsd": math.inf}
 
     for epoch in range(args.n_epochs):
+        # if epoch > 10:
+        #     args.inference_steps = 10
         train_losses = train_epoch_sbalign(
                 model=model, 
                 loader=train_loader, 
