@@ -43,7 +43,9 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
 
     for epoch in range(args.n_epochs):
         if epoch > 10:
-            args.inference_steps = 100
+            args.inference_steps = args.inference_steps
+        else:
+            args.inference_steps = 10
         print(f"Epoch #{epoch + 1}")
         log_dict = {}
         

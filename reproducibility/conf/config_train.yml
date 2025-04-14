@@ -20,7 +20,7 @@ h_dim: 32
 inference_every: 1
 inference_goal: min
 inference_metric: val_inference_rmsd
-inference_steps: 10
+inference_steps: 100
 leakyrelu_slope: 0.01
 log_dir: logs
 log_every: 10
