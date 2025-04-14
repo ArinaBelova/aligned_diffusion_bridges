@@ -42,7 +42,7 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
     logs = {'val_loss': math.inf, "val_inference_rmsd": math.inf}
 
     for epoch in range(args.n_epochs):
-        if epoch > args.more_inference_steps_from_epochs:
+        if epoch > 10:
             args.inference_steps = 100
         print(f"Epoch #{epoch + 1}")
         log_dict = {}
