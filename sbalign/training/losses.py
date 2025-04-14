@@ -27,11 +27,12 @@ def loss_function_sbalign(
     assert data.t.max().item() <= t_max
 
     if K > 0:
-        #t_diff = data.cond_var_t #original
-        t_diff = torch.sqrt(data.cond_var_t)
+        t_diff = data.cond_var_t #original
+        #t_diff = torch.sqrt(data.cond_var_t)
     else:
         #t_diff = (beta(g, 1, steps_num) - beta(g, data.t, steps_num)).to(DEVICE)
-        t_diff = torch.sqrt((beta(g, 1, steps_num) - beta(g, data.t, steps_num)).to(DEVICE)) #original
+        #t_diff = torch.sqrt((beta(g, 1, steps_num) - beta(g, data.t, steps_num)).to(DEVICE)) #original
+        t_diff = ((g(data.t)**2)*(1-data.t)).unsqueeze(-1)
 
     x_diff = (data.pos_T - data.pos_t)
 
