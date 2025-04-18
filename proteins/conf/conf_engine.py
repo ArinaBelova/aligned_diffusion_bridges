@@ -70,7 +70,7 @@ class ConfEngine:
 
         trajectory = []
         with torch.no_grad():
-            for t_idx in range(self.inference_steps):
+            for t_idx in range(self.inference_steps+1):
             #for t_idx in range(self.inference_steps+1):
                 if self.dif.K > 0:
         
@@ -84,8 +84,12 @@ class ConfEngine:
                     F = self.dif.F_t[None,None,:,:].to(DEVICE)
                     G = self.dif.G_t[None,None,:].to(DEVICE)
                     GG = self.dif.G_t[None,None,:,None].to(DEVICE) * self.dif.G_t[None,None,None,:].to(DEVICE)
-                    dw = torch.sqrt(self.dt) * torch.randn_like(x)[:,:,None]
 
+                    if t_idx==self.inference_steps:
+                        print(f'On last step since with idx={t_idx}')
+                        dw = 0
+                    else:
+                        dw = torch.sqrt(self.dt) * torch.randn_like(x)[:,:,None]
                     # print(x.get_device())
                     # print(Y.get_device())
                     # print(t.get_device())
@@ -117,7 +121,11 @@ class ConfEngine:
                     # print('data.t',data.t.dtype)
                     # print('data.pos_t.',data.pos_t.dtype)
                     drift = self.model.run_drift(data.to(DEVICE)) / std
-                    diffusion = g_t * torch.randn_like(data.pos_t,device=DEVICE)* torch.sqrt(self.dt).to(DEVICE)
+
+                    if t_idx==self.inference_steps:
+                        diffusion = 0
+                    else:
+                        diffusion = g_t * torch.randn_like(data.pos_t,device=DEVICE)* torch.sqrt(self.dt).to(DEVICE)
 
                     dpos = torch.square(g_t) * drift * self.dt + diffusion
                     pos_t = data.pos_t  + dpos

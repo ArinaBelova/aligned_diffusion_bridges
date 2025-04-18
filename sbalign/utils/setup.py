@@ -10,16 +10,18 @@ from sbalign.utils.definitions import IS_CLUSTER, EXP_DIR, CLUSTER_EXP_DIR, WAND
 # ------------ Wandb --------------------------
 
 def wandb_setup(args):
-    DIR = CLUSTER_EXP_DIR if IS_CLUSTER else EXP_DIR
+    #DIR = CLUSTER_EXP_DIR if IS_CLUSTER else EXP_DIR
+
+    DIR = args.log_dir
     print(f"Supplied experiment directory: {DIR}", flush=True)
 
     if not os.path.exists(DIR):
         os.makedirs(DIR)
 
     if args.jobid is None:
-        run_id = wandb.util.generate_id() + f"-K-{args.K}" + f"-H-{args.H}" + f"-norm-{args.norm}"
+        run_id = wandb.util.generate_id() + f"-K-{args.K}" + f"-H-{args.H}" + f"-norm-{args.norm}" + f"-g-{args.max_diffusivity}"
     else:
-        run_id = args.jobid + f"-K-{args.K}" + f"-H-{args.H}" + f"-norm-{args.norm}"
+        run_id = args.jobid + f"-K-{args.K}" + f"-H-{args.H}" + f"-norm-{args.norm}"+ f"-g-{args.max_diffusivity}"
     
     if args.group_name is not None:
         args.run_name = args.group_name + f"-{run_id}"

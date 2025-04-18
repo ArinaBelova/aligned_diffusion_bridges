@@ -35,16 +35,28 @@ def sampling(pos_0, model, diffusivity, inference_steps, t_schedule, apply_score
                 F = diffusivity.F_t[None,None,:,:].to(DEVICE)
                 G = diffusivity.G_t[None,None,:].to(DEVICE)
                 GG = diffusivity.G_t[None,None,:,None].to(DEVICE) * diffusivity.G_t[None,None,None,:].to(DEVICE)
-                dw = torch.sqrt(dt) * torch.randn_like(x)[:,:,None]
 
                 pos_transform = diffusivity.input_transform(x,Y,t,T,diffusivity.omega.to(DEVICE), diffusivity.gamma.to(DEVICE),diffusivity.g_max.to(DEVICE))
                 drift_pos_x = model.run_drift(pos_transform, torch.ones(pos_transform.shape[0]).to(DEVICE)* t[0,0])
                 drift_pos = diffusivity.score(drift_pos_x.to(DEVICE),t,T,diffusivity.omega.to(DEVICE), diffusivity.gamma.to(DEVICE),diffusivity.g_max.to(DEVICE))
+
+                if t_idx==inference_steps:
+                    dw = 0
+                else:
+                    dw = torch.sqrt(dt) * torch.randn_like(x)[:,:,None]
+
+                dpos = (matrix_vector_mp(F, pos) + matrix_vector_mp(GG, drift_pos))*dt + G * dw
+
                 dpos = (matrix_vector_mp(F, pos) + matrix_vector_mp(GG, drift_pos))*dt + G * dw
             else:
                 t = t_schedule[t_idx]
                 g = diffusivity.g
                 drift_pos = model.run_drift(pos, torch.ones(pos.shape[0]).to(DEVICE)* t)
+                if t_idx==inference_steps:
+                    diffusion = 0
+                else:
+                    diffusion = g(t).cpu().detach() * torch.randn_like(pos) * torch.sqrt(dt)
+
                 diffusion = g(t) * torch.randn_like(pos) * torch.sqrt(dt)
                 dpos = np.square(g(t)) * drift_pos * dt + diffusion
             

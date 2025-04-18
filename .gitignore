@@ -30,6 +30,7 @@ MANIFEST
 
 # Jupyter Notebook
 .ipynb_checkpoints
+*.ipynb
 
 /playgrounds*
 /logs*
@@ -50,3 +51,4 @@ experiments/wand/*
 *.pt
 logs/*
 sb_align/data/*
+cluster/*

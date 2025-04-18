@@ -235,7 +235,7 @@ class FractionalSchrödingerBridge(nn.Module):
         T = torch.tensor(T,device=omega.device)
         for t in torch.linspace(start_from,T,steps=steps):
             if self.K==0:
-                sigma_Tt = (g_max**2)*(1-t)*t
+                sigma_Tt = (g_max**2)*(1-t)
                 if sigma_Tt < threshold:
                     t_max = t
                     break

@@ -91,7 +91,7 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
                                             orig_dataset=val_loader.dataset,
                                             num_inference_proteins=args.num_inference_proteins,
                                             inference_steps=args.inference_steps,
-                                            samples_per_protein=args.samples_per_protein
+                                            samples_per_protein=1
                                         )
             
             print_msg = f"Epoch {epoch+1}: Inference "

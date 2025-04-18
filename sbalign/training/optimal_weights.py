@@ -19,10 +19,10 @@ def omega_optimized(gamma, hurst, time_horizon, return_cost=False, return_Ab = F
 
     if len(time_horizon.shape) == 2:
         time_horizon = time_horizon[:,0]
-        
-    gamma = torch.as_tensor(gamma, device=device)
-    time_horizon = torch.as_tensor(time_horizon, device=device)
-  #  print('gamma',gamma)
+    
+    gamma = torch.as_tensor(gamma, device=device).double()
+    time_horizon = torch.as_tensor(time_horizon, device=device).double()
+    hurst = torch.as_tensor(hurst).double()
 
     gamma_i, gamma_j = gamma[None, :], gamma[:, None]
 
@@ -34,14 +34,18 @@ def omega_optimized(gamma, hurst, time_horizon, return_cost=False, return_Ab = F
     # solve the linear programm
     omega = torch.linalg.solve(A, b)
 
-    #  print('A',A.shape)
-    #  print('b', b.shape)
-    #  print('omega', omega.shape)
+    omega = omega.float()
+    A = A.float()
+    b = b.float()
+    gamma = gamma.float()
+
     output = omega if not return_Ab else (omega,A,b)
+
     # return the cost if needed
     if return_cost:
         c = time_horizon ** (2 * hurst + 1) / (2 * hurst) / (2 * hurst + 1) / torch.exp(torch.lgamma(hurst + .5)) ** 2
         cost = 1 - b @ omega / c
+
         return output, cost
     else:
         return output
