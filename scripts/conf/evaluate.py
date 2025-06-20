@@ -9,7 +9,7 @@ import torch
 from torch_geometric.loader import DataLoader
 
 import os
-os.chdir("/home/fe/nobis/projects/bridges/aligned_diffusion_bridges") 
+os.chdir("/home/fe/belova/projects/bridges/aligned_diffusion_bridges") 
 import sys
 sys.path.append(os.getcwd())
 
@@ -25,7 +25,8 @@ from proteins.baselines.conf.egnn_model import build_model_from_args as build_ba
 
 def prepare_inference_setup(args):
 
-    with open(f'{args.log_dir}/{args.run_name}/config_train.yml') as f:
+    # TODO: instead of config_train have here config_eval; probably will need to copy over the specification of the model
+    with open(f'{args.log_dir}/{args.run_name}/config_eval.yml') as f:
         model_args = argparse.Namespace(**yaml.full_load(f))
 
 

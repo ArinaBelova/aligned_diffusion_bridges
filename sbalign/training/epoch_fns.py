@@ -5,7 +5,7 @@ import numpy as np
 
 from sbalign.data import ListDataset
 from sbalign.utils.ops import to_numpy
-from sbalign.utils.sb_utils import get_t_schedule
+from sbalign.utils.sb_utils import get_t_schedule, sample_from_brownian_bridge
 from sbalign.utils.sampling import sampling
 from sbalign.utils.definitions import DEVICE
 
@@ -39,6 +39,88 @@ class ProgressMonitor:
     def summarize(self):
         return {k: np.round(v / self.count, 4) for k, v in self.metrics.items()}
 
+def train_epoch_imagerec(model, loader, 
+        optimizer, loss_fn,
+        grad_clip_value: float = None, 
+        ema_weights=None, dif=None, args=None):
+    
+    # put the model on train
+    model.train()
+    monitor = ProgressMonitor()
+
+    for _, data in enumerate(loader):
+        optimizer.zero_grad()
+
+        pos_0, pos_T = data["LQ"], data["GT"]
+       
+        pos_0 = pos_0.to(DEVICE)
+        pos_T = pos_T.to(DEVICE)
+
+        # transform the datapoint to x_0, t, x_t, x_T here:
+        t = np.random.uniform() * dif.t_max 
+        t = t.to(DEVICE)
+
+        if dif.K>0:
+            #t = t * torch.ones((data.num_nodes, 1)) #t
+            z = dif.sample_pinned(t, dif.T, pos_0, pos_T, dif.omega, dif.gamma, dif.g_max)
+
+            x = z[:,:,0]
+            Y = z[:,:,1:]
+            pos_t = dif.input_transform(x,Y,t,dif.T,dif.omega, dif.gamma,dif.g_max)
+            cond_var_t = dif.cond_var(t,dif.T,dif.omega,dif.gamma,dif.g_max)
+            # cond_var_t = cond_var_t.to(DEVICE)
+        else:
+            #t = t * torch.ones(data.num_nodes) #t
+            pos_t = sample_from_brownian_bridge(g=dif.g, t=t, x_0=pos_0, x_T=pos_T, t_min=0.0, t_max=1.0)
+
+        try:
+            #data = data.to(DEVICE)
+
+            drift_x, doobs_score_x, doobs_score_x_T = model(pos_0, pos_t, t)
+
+            loss, loss_dict = loss_fn(drift_x_pred=drift_x,
+                                      doobs_score_x_pred=doobs_score_x,
+                                      doobs_score_xT_pred=doobs_score_x_T,
+                                      t=t,
+                                      pos_t=pos_t,
+                                      pos_T=pos_T,
+                                      cond_var_t=cond_var_t)
+                                    
+            monitor.add(loss_dict)
+
+            loss.backward()
+
+            if grad_clip_value is not None:
+                grad_clip_value = 10.0
+            
+            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_value)
+            optimizer.step()
+            
+            if ema_weights is not None:
+                ema_weights.update(model.parameters())
+            
+        except Exception as e:
+            if 'out of memory' in str(e):
+                print('| WARNING: ran out of memory, skipping batch')
+                for p in model.parameters():
+                    if p.grad is not None:
+                        del p.grad  # free some memory
+                torch.cuda.empty_cache()
+                continue
+            elif 'Input mismatch' in str(e):
+                print('| WARNING: weird torch_cluster error, skipping batch')
+                for p in model.parameters():
+                    if p.grad is not None:
+                        del p.grad  # free some memory
+                torch.cuda.empty_cache()
+                continue
+            else:
+                print(e)
+                traceback.print_exc()
+                continue
+
+    return monitor.summarize()
+
 
 def train_epoch_sbalign(
         model, loader, 
@@ -54,7 +136,6 @@ def train_epoch_sbalign(
 
         try:
             data = data.to(DEVICE)
-            #fractional_data_transform(data, args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K)
             drift_x, doobs_score_x, doobs_score_x_T = model(data)
 
             loss, loss_dict = loss_fn(drift_x_pred=drift_x,
@@ -97,6 +178,71 @@ def train_epoch_sbalign(
 
     return monitor.summarize()
 
+def test_epoch_imagerec(model, loader, loss_fn, dif):
+    model.eval()
+    monitor = ProgressMonitor()
+
+    for _, data in enumerate(loader):
+        pos_0, pos_T = data
+        
+        pos_0 = pos_0.to(DEVICE)
+        pos_T = pos_T.to(DEVICE)
+
+        # transform the datapoint to x_0, t, x_t, x_T here:
+        t = np.random.uniform() * dif.t_max 
+        t = t.to(DEVICE)
+
+        if dif.K>0:
+            #t = t * torch.ones((data.num_nodes, 1)) #t
+            z = dif.sample_pinned(t, dif.T, pos_0, pos_T, dif.omega, dif.gamma, dif.g_max)
+
+            x = z[:,:,0]
+            Y = z[:,:,1:]
+            pos_t = dif.input_transform(x,Y,t,dif.T,dif.omega, dif.gamma,dif.g_max)
+            cond_var_t = dif.cond_var(t,dif.T,dif.omega,dif.gamma,dif.g_max)
+        else:
+            pos_t = sample_from_brownian_bridge(g=dif.g, t=t, x_0=pos_0, x_T=pos_T, t_min=0.0, t_max=1.0)
+
+
+        try:
+            with torch.no_grad():
+                data = data.to(DEVICE)
+                #fractional_data_transform(data, args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K)
+
+                drift_x, doobs_score_x, doobs_score_x_T = model(data)
+                
+                _, loss_dict = loss_fn(drift_x_pred=drift_x,
+                                       doobs_score_x_pred=doobs_score_x,
+                                       doobs_score_xT_pred=doobs_score_x_T,
+                                       t=t,
+                                       pos_t=pos_t,
+                                       pos_T=pos_T,
+                                       cond_var_t=cond_var_t)
+                
+                monitor.add(loss_dict)
+
+        except Exception as e:
+            if 'out of memory' in str(e):
+                print('| WARNING: ran out of memory, skipping batch')
+                for p in model.parameters():
+                    if p.grad is not None:
+                        del p.grad  # free some memory
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                continue
+            elif 'Input mismatch' in str(e):
+                print('| WARNING: weird torch_cluster error, skipping batch')
+                for p in model.parameters():
+                    if p.grad is not None:
+                        del p.grad  # free some memory
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                continue
+            else:
+                print(e)
+                continue
+
+    return monitor.summarize()
 
 def test_epoch_sbalign(model, loader, loss_fn):
     model.eval()

@@ -342,28 +342,29 @@ class FractionalSchrödingerBridge(nn.Module):
 
         K = omega.shape[1]
 
-        bs = t.shape[0]
-        d = x0.shape[1]
+        #bs = t.shape[0]
+        #d = x0.shape[1]
+        bs, ch_dim,h,w = x0.shape
 
         s = torch.zeros_like(t)
 
-        mu = torch.zeros(bs,d,K+1)
-        mu[:,:,0] = x0
+        mu = torch.zeros(bs,ch_dim,h,w,K+1)  #torch.zeros(bs,d,K+1) # adjust for h/w
+        mu[:,:,:,:,0] = x0
 
         Sig_zx = torch.zeros(bs,K+1)
         
         Sig_zx[:,0] = self.covX(s,t,T, omega, gamma, g)
         Sig_zx[:,1:] = self.covYX(t,T, omega, gamma, g)
 
-        var = self.covX(s,T,T, omega, gamma, g)[:,None,None]
+        var = self.covX(s,T,T, omega, gamma, g)[:,None,None] # [bs, ch_dim, h, w, K]
 
-        mu_bar = mu + (1/var) * Sig_zx[:,None,:] * ((xT-x0)[:,:,None])
+        mu_bar = mu + (1/var[:,None,None,:,:]) * Sig_zx[:, None, None, None, :] * ((xT-x0)[:,:,:,:,None]) # adjust var/Sig_zx
 
-        Sig_bar = self.covZ(t,t,omega,gamma,g) - (1/var) * (Sig_zx[:,:,None] * Sig_zx[:,None,:])
+        Sig_bar = self.covZ(t,t,omega,gamma,g) - (1/var) * (Sig_zx[:,:,None] * Sig_zx[:,None,:]) # TODO: shall it be in the images of dimension [b_s, K, K]?
 
         assert (Sig_bar.transpose(1, 2) == Sig_bar).all(), f'Covariance is not symmetric'
 
-        noise = sample_from_batch_multivariate_normal(Sig_bar,c=d,h=1,w=1,batch_size=bs, aug_dim=K+1)[:,:,0,0,:]
+        noise = sample_from_batch_multivariate_normal(Sig_bar,c=ch_dim,h=h,w=w,batch_size=bs, aug_dim=K+1)#[:,:,0,0,:]
 
         return mu_bar + noise
 
@@ -402,17 +403,17 @@ class FractionalSchrödingerBridge(nn.Module):
     def mu(self,t):
         return torch.zeros_like(t)
     
-    def print_approximation_accuracy(self):
-        print('[MA-fBM approximation error]')
-        error_fn = lambda hurst: ma.omega_optimized_2(self.gamma, hurst, self.time_horizon, return_cost='normalized')
+    # def print_approximation_accuracy(self):
+    #     print('[MA-fBM approximation error]')
+    #     error_fn = lambda hurst: ma.omega_optimized_2(self.gamma, hurst, self.time_horizon, return_cost='normalized')
 
-        hursts = jnp.linspace(0., 1., 21)
-        _, errors = jax.vmap(error_fn)(hursts)
-        hursts_str = [f'{hurst:.2f}' for hurst in hursts]
-        errors_str = [f'{error:.2f}' for error in errors]
-        print(f'H: {" ".join(hursts_str)}')
-        print(f'E: {" ".join(errors_str)}')
-        return
+    #     hursts = jnp.linspace(0., 1., 21)
+    #     _, errors = jax.vmap(error_fn)(hursts)
+    #     hursts_str = [f'{hurst:.2f}' for hurst in hursts]
+    #     errors_str = [f'{error:.2f}' for error in errors]
+    #     print(f'H: {" ".join(hursts_str)}')num_workers
+    #     print(f'E: {" ".join(errors_str)}')
+    #     return
 
     
     # def mean_scale(self, t):

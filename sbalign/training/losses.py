@@ -179,6 +179,67 @@ def loss_function_conf(
 
     return loss, loss_dict
 
+def loss_function_imagerec(
+        drift_x_pred, 
+        doobs_score_x_pred, 
+        doobs_score_xT_pred,
+        t,
+        pos_t,
+        pos_T,
+        cond_var_t,
+        g, 
+        steps_num, 
+        drift_weight: float = 1.0,
+        reg_weight_T: float = 1.0,
+        reg_weight_t: float = 1.0,
+        t_max: float=1.0,
+        K: int = 0,
+):
+    assert t.max().item() <= t_max
+
+    if K > 0:
+        t_diff = cond_var_t #original
+        #t_diff = torch.sqrt(data.cond_var_t)
+    else:
+        #t_diff = (beta(g, 1, steps_num) - beta(g, data.t, steps_num)).to(DEVICE)
+        #t_diff = torch.sqrt((beta(g, 1, steps_num) - beta(g, data.t, steps_num)).to(DEVICE)) #original
+        t_diff = ((g(t)**2)*(1-t)).unsqueeze(-1)
+
+    x_diff = (pos_T - pos_t)
+
+    assert torch.max(t_diff)>0, "Can not have zero variance"
+
+    bb_drift_true = (x_diff) / t_diff
+    #print("bb_drift_true ", bb_drift_true)
+    bb_drift_pred = drift_x_pred #+ doobs_score_x_pred
+
+    #print("drift_x_pred is ", drift_x_pred)
+    criterion = nn.MSELoss()
+
+    dt = 1/steps_num
+
+    bb_loss = criterion(bb_drift_pred, bb_drift_true) * dt
+
+    # if doobs_score_xT_pred is not None:
+    #     reg_loss_T = (doobs_score_xT_pred ** 2).sum(dim=-1).mean()
+    # else:
+    #     reg_loss_T = torch.tensor(0.0, requires_grad=True)
+    # reg_loss_t = (doobs_score_x_pred ** 2).sum(dim=-1).mean()
+
+    loss = drift_weight * bb_loss #+ reg_weight_T * reg_loss_T + reg_weight_t * reg_loss_t
+    
+    loss_dict = {
+        "loss": loss.item(), 
+        "bb_loss": bb_loss.item(),
+        # "reg_loss_T": reg_loss_T.item(), 
+        # "reg_loss_t": reg_loss_t.item()
+    }
+
+    for key, value in loss_dict.items():
+        loss_dict[key] = np.round(value, 4)
+
+    return loss, loss_dict
+
 
 def loss_fn_from_args(args):
 
@@ -190,6 +251,8 @@ def loss_fn_from_args(args):
         loss_fn_base = loss_function_docking
     elif args.task == "conf":
         loss_fn_base = loss_function_conf
+    elif args.task == "imagerec":
+        loss_fn_base = loss_function_imagerec    
 
     loss_fn = partial(
         loss_fn_base,

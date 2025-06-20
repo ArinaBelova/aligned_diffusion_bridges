@@ -1,9 +1,10 @@
 name: sbalign
 channels:
   - pytorch
+  - conda-forge
   - defaults
 dependencies:
-  - pytorch==2.4.0
+  - pytorch==2.4.0 # for now want the newest pytorch to see which opencv will be installed, it'll be 2.5.1; i have this version for the aligned experiments: ==2.4.0
   - pip
   - pip:
     - torch-ema
@@ -19,7 +20,10 @@ dependencies:
     - openpyxl
     - omegaconf
     - einops
-    - seaborn
     - scikit-learn
-    - wandb
     - e3nn
+    - opencv-python-headless==4.10.0.84  #==4.6.0.66
+    - lmdb
+    # - mkl==2022.1.0
+    # - libglib2.0-0 
+    # - libgl1

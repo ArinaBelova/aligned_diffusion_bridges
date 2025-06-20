@@ -17,16 +17,18 @@ sys.path.append(os.getcwd())
 #     print(f"{key}={value}")
 #######
 
-from proteins.conf.dataset import build_data_loader
-from proteins.conf.models import build_model_from_args
+from imagerec.data import build_data_loader, create_dataset # what does this return: only train loader or both train and valid loader?
+from imagerec.models import build_model_from_args
 
-from sbalign.training.epoch_fns import train_epoch_sbalign, test_epoch_sbalign, inference_epoch_conf
+from sbalign.training.epoch_fns import train_epoch_imagerec, test_epoch_imagerec # test_epoch_sbalign, inference_epoch_conf
 from sbalign.training.losses import loss_fn_from_args
 from sbalign.training.updaters import get_optimizer, get_scheduler, get_ema
 from sbalign.utils.sb_utils import get_diffusivity_schedule
 from sbalign.utils.helper import count_parameters
-from sbalign.utils.setup import wandb_setup, parse_conf_train_args, update_args_from_config
+from sbalign.utils.setup import wandb_setup, parse_imagerec_train_args, update_args_from_config
 from sbalign.utils.definitions import DEVICE
+
+from types import SimpleNamespace
 
 
 def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weights=None, log_dir=None):
@@ -49,11 +51,11 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
         print(f"Epoch #{epoch + 1}")
         log_dict = {}
         
-        train_losses = train_epoch_sbalign(
+        train_losses = train_epoch_imagerec(
                 model=model, loader=train_loader, 
                 optimizer=optimizer, loss_fn=loss_fn,
                 grad_clip_value=args.grad_clip_value, 
-                ema_weights=ema_weights, 
+                ema_weights=ema_weights, dif = g,
             )
         
         # Print training metrics
@@ -72,7 +74,7 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
             ema_weights.copy_to(model.parameters())
 
         # Compute losses on validation set
-        val_losses = test_epoch_sbalign(model=model, loader=val_loader, loss_fn=loss_fn)
+        val_losses = test_epoch_imagerec(model=model, loader=val_loader, loss_fn=loss_fn, dif=g)
 
         # Print validation metrics
         print_msg = f"Epoch {epoch+1}: "
@@ -85,21 +87,21 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
         print(print_msg, flush=True)  
 
         # Inference on validation set
-        if args.inference_every > 0 and (epoch + 1) % args.inference_every == 0:
-            traj_dict, inference_metrics = inference_epoch_conf(
-                                            model=model, g=g, 
-                                            orig_dataset=val_loader.dataset,
-                                            num_inference_proteins=args.num_inference_proteins,
-                                            inference_steps=args.inference_steps,
-                                            samples_per_protein=args.samples_per_protein
-                                        )
+        # if args.inference_every > 0 and (epoch + 1) % args.inference_every == 0:
+        #     traj_dict, inference_metrics = inference_epoch_conf(
+        #                                     model=model, g=g, 
+        #                                     orig_dataset=val_loader.dataset,
+        #                                     num_inference_proteins=args.num_inference_proteins,
+        #                                     inference_steps=args.inference_steps,
+        #                                     samples_per_protein=args.samples_per_protein
+        #                                 )
             
-            print_msg = f"Epoch {epoch+1}: Inference "
-            for item, value in inference_metrics.items():
-                print_msg += f"{item}: {np.round(value, 4)} "                    
-            print(print_msg, flush=True)
-            logs.update({'val_inference_' + k: v for k, v in inference_metrics.items()})
-        print(flush=True)
+        #     print_msg = f"Epoch {epoch+1}: Inference "
+        #     for item, value in inference_metrics.items():
+        #         print_msg += f"{item}: {np.round(value, 4)} "                    
+        #     print(print_msg, flush=True)
+        #     logs.update({'val_inference_' + k: v for k, v in inference_metrics.items()})
+        # print(flush=True)
 
         if ema_weights is not None:
             ema_state_dict = copy.deepcopy(model.state_dict() if DEVICE == 'cuda' else model.state_dict())
@@ -107,38 +109,38 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
 
         model_dict = model.state_dict()
 
-        if args.inference_every > 0:
-            if args.inference_metric in logs.keys() and \
-                    (args.inference_goal == 'min' and logs[args.inference_metric] < best_val_inference_value or
-                    args.inference_goal == 'max' and logs[args.inference_metric] > best_val_inference_value):
-                best_val_inference_value = logs[args.inference_metric]
-                best_val_inference_epoch = epoch
+        # if args.inference_every > 0:
+        #     if args.inference_metric in logs.keys() and \
+        #             (args.inference_goal == 'min' and logs[args.inference_metric] < best_val_inference_value or
+        #             args.inference_goal == 'max' and logs[args.inference_metric] > best_val_inference_value):
+        #         best_val_inference_value = logs[args.inference_metric]
+        #         best_val_inference_epoch = epoch
 
-                if log_dir is not None:
-                    model_file = os.path.join(log_dir, 'best_inference_epoch_model.pt')
-                    print(f"After best inference, saving model to {model_file}", flush=True)
-                    torch.save(model_dict, model_file)
+        #         if log_dir is not None:
+        #             model_file = os.path.join(log_dir, 'best_inference_epoch_model.pt')
+        #             print(f"After best inference, saving model to {model_file}", flush=True)
+        #             torch.save(model_dict, model_file)
 
-                    if ema_weights is not None:
-                        ema_file = os.path.join(log_dir, 'best_ema_inference_epoch_model.pt')
-                        print(f"After best inference, saving ema to {ema_file}", flush=True)
-                        torch.save(ema_state_dict, ema_file)
+        #             if ema_weights is not None:
+        #                 ema_file = os.path.join(log_dir, 'best_ema_inference_epoch_model.pt')
+        #                 print(f"After best inference, saving ema to {ema_file}", flush=True)
+        #                 torch.save(ema_state_dict, ema_file)
                     
-                    print(f"After best inference, saving trajectories to {log_dir}/trajectories", flush=True)
-                    os.makedirs(os.path.join(log_dir, "trajectories"), exist_ok=True)
-                    for complex_id in traj_dict:
-                        trajectory = traj_dict[complex_id]
-                        traj_file = f"{log_dir}/trajectories/{complex_id}.npy"
-                        np.save(traj_file, trajectory)
-                    print(flush=True)
+        #             print(f"After best inference, saving trajectories to {log_dir}/trajectories", flush=True)
+        #             os.makedirs(os.path.join(log_dir, "trajectories"), exist_ok=True)
+        #             for complex_id in traj_dict:
+        #                 trajectory = traj_dict[complex_id]
+        #                 traj_file = f"{log_dir}/trajectories/{complex_id}.npy"
+        #                 np.save(traj_file, trajectory)
+        #             print(flush=True)
 
         # Write logs to wandb
         if args.wandb_mode == "online":
             # Logging metrics and losses
             log_dict.update({'train_' + k: v for k, v in train_losses.items()})
             log_dict.update({'val_' + k: v for k, v in val_losses.items()})
-            if args.inference_every > 0 and (epoch + 1) % args.inference_every == 0:
-                log_dict.update({'val_inference_' + k: v for k, v in inference_metrics.items()})     
+            # if args.inference_every > 0 and (epoch + 1) % args.inference_every == 0:
+            #     log_dict.update({'val_inference_' + k: v for k, v in inference_metrics.items()})     
             log_dict['current_lr'] = optimizer.param_groups[0]['lr']
             log_dict["step"] = epoch + 1
             wandb.log(log_dict)
@@ -184,14 +186,23 @@ def main(cmd_args=None):
 
     # Load args from command line and replace values with those from config
     print(flush=True)
-    args = parse_conf_train_args(cmd_args=cmd_args)
-    print('args before update',args)
+    args = parse_imagerec_train_args(cmd_args=cmd_args)
+    print('args from cmd before update',args)
+    # TODO: maybe here we want to update the config with options.py and then parse an extended config? 
+    
     args = update_args_from_config(args=args)
-    print(args, flush=True)
+    print('args after concatenating the config args set: ', args, flush=True)
+
+    from options import parse, dict_to_nonedict
+    if args.distortion == "derain":
+        args = parse(args, is_train=True)
+        args = dict_to_nonedict(args)
+        print('args after parsing in the imagerec framework ', args)
+
 
     # Wandb setup
-    wandb_setup(args)
-    args.wandb_dir = os.path.dirname(wandb.run.dir)
+    # wandb_setup(args)
+    # args.wandb_dir = os.path.dirname(wandb.run.dir)
 
     print(f"Args: {args}", flush=True)
     print(flush=True)
@@ -200,10 +211,13 @@ def main(cmd_args=None):
     print(flush=True)
 
     # Datasets
-    train_loader, val_loader = build_data_loader(args)
+    #print("Training dataset arguments: ", args.datasets.train)
+    dataset_train = create_dataset(SimpleNamespace(**args.datasets["train"]))
+    dataset_val = create_dataset(SimpleNamespace(**args.datasets["val"]))
+    train_loader, val_loader = build_data_loader(dataset_train, dataset_val, args) # (dataset_train, dataset_val, args) 
 
     # Model
-    model = build_model_from_args(args)
+    model = build_model_from_args(args.network_G) #build_model_from_args(SimpleNamespace(**args["network_G"]))
 
     n_params = count_parameters(model=model, log_to_wandb=False and args.online)
     print(f"Model with {n_params / (10**6)}M parameters", flush=True)
@@ -218,7 +232,7 @@ def main(cmd_args=None):
                               patience=args.scheduler_patience, min_lr=args.lr / 100)
     ema = get_ema(model=model, decay_rate=args.ema_decay_rate)
 
-    # Recording configuration
+    # Recording the full configuration with which we will train
     if args.log_dir is not None:
         log_dir = os.path.join(args.log_dir, args.run_name)
         os.makedirs(log_dir, exist_ok=True)
