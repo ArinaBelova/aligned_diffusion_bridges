@@ -332,6 +332,8 @@ class FractionalSchrödingerBridge(nn.Module):
         # Sig[:,1:,1:] = Sig[:,1:,1:] + I_eps
         # Sig[:,0,0] += eps
 
+        if self.K>5:
+            eps = 1e-2
         Sig = Sig + torch.eye(K+1, K+1)[None, :, :] * torch.ones((bs, K+1, K+1)) * eps
 
         assert ((torch.diag(Sig[0])>0).all()), f'Found negativ variance: \n {torch.diag(Sig[0])<0}'

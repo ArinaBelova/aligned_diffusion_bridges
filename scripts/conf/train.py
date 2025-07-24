@@ -42,11 +42,22 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
     logs = {'val_loss': math.inf, "val_inference_rmsd": math.inf}
 
     for epoch in range(args.n_epochs):
-        if epoch > 10:
-            args.inference_steps = args.inference_steps
-        else:
-            args.inference_steps = 10
-        print(f"Epoch #{epoch + 1}")
+        if epoch > 20:
+            args.inference_steps = 100
+            args.samples_per_protein = 1
+        # else:
+        #     args.inference_steps = 100
+        #     #args.samples_per_protein = 1
+        
+        print('args.inference_steps',args.inference_steps)
+        print('args.samples_per_protein',args.samples_per_protein)
+        # if epoch > 10:
+        #     print('epoch',epoch,flush=True)
+        #     args.inference_steps = args.inference_steps
+        # else:
+        #     args.inference_steps = 10
+        
+        print(f"Epoch #{epoch + 1}",flush=True)
         log_dict = {}
         
         train_losses = train_epoch_sbalign(
@@ -91,7 +102,7 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
                                             orig_dataset=val_loader.dataset,
                                             num_inference_proteins=args.num_inference_proteins,
                                             inference_steps=args.inference_steps,
-                                            samples_per_protein=1
+                                            samples_per_protein=args.samples_per_protein
                                         )
             
             print_msg = f"Epoch {epoch+1}: Inference "

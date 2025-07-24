@@ -202,6 +202,9 @@ def inference_epoch_conf(model, g, orig_dataset, inference_steps: int = 100,
                          samples_per_protein: int = 10):
     
     print('inference_steps',inference_steps)
+    print('len of orig_dataset.conf_pairs_split',len(orig_dataset.conf_pairs_split))
+    print('num_inference_proteins',num_inference_proteins)
+    print('len of orig_dataset.conf_pairs_split[:num_inference_proteins]',len(orig_dataset.conf_pairs_split[:num_inference_proteins]))
     dataset = ListDataset(
         processed_dir=orig_dataset.full_processed_dir, 
         id_list=orig_dataset.conf_pairs_split[:num_inference_proteins]

@@ -49,6 +49,7 @@ class ConfEngine:
         self.dt = self.t_schedule[1] - self.t_schedule[0]
 
         if g_fn is None:
+            print('g_fn is None and will be initialized')
             g_fn = get_diffusivity_schedule(model_args.diffusivity_schedule,
                                             g_max=model_args.max_diffusivity,
                                             K = args.K,
@@ -56,6 +57,7 @@ class ConfEngine:
                                             norm = args.norm)
         self.dif = g_fn
 
+        print('H used in samppling',self.dif.H)
 
     def generate_conformation(self, data):
 
@@ -70,10 +72,10 @@ class ConfEngine:
 
         trajectory = []
         with torch.no_grad():
+            #for t_idx in range(self.inference_steps):
             for t_idx in range(self.inference_steps+1):
-            #for t_idx in range(self.inference_steps+1):
                 if self.dif.K > 0:
-        
+                    
                     t = self.t_schedule[t_idx].float()
                     data.t = (t * data.x.new_ones(data.num_nodes))#.float()
                     t = t[None,None].to(DEVICE)
@@ -86,7 +88,6 @@ class ConfEngine:
                     GG = self.dif.G_t[None,None,:,None].to(DEVICE) * self.dif.G_t[None,None,None,:].to(DEVICE)
 
                     if t_idx==self.inference_steps:
-                        print(f'On last step since with idx={t_idx}')
                         dw = 0
                     else:
                         dw = torch.sqrt(self.dt) * torch.randn_like(x)[:,:,None]

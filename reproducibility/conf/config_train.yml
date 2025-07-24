@@ -20,7 +20,7 @@ h_dim: 32
 inference_every: 1
 inference_goal: min
 inference_metric: val_inference_rmsd
-inference_steps: 100
+inference_steps: 10
 leakyrelu_slope: 0.01
 #log_dir: logs
 log_every: 10
@@ -34,11 +34,11 @@ max_neighbors: 40
 max_radius: 40.0
 model_name: tensor-prod
 n_conv_layers: 3
-n_epochs: 1  #300 #200 #10000
+n_epochs: 300  #300 #200 #10000
 n_s: 30
 n_v: 10
 node_fdim: 145
-num_inference_proteins: 5
+num_inference_proteins: 150
 num_workers: 1
 optim_name: adamw
 reg_weight_T: 1.0
