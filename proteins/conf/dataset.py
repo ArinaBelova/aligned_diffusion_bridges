@@ -88,7 +88,6 @@ class ProteinConfDataset(Dataset):
         return len(self.ids)
     
     def get(self, idx):
-        print("I am getting a protein pair now while training!")
         if self.samples_per_protein is not None:
             conf_pair_id, _ = self.ids[idx]
         else:
