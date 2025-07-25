@@ -5,6 +5,7 @@ center_max_radius: 30.0
 config: null
 data_dir: sbalign/data
 dataset: d3pm
+inverse_problem: true
 diffusivity_schedule: fbb # fbb
 distance_embed_dim: 32
 drift_weight: 1.0
@@ -34,7 +35,7 @@ max_neighbors: 40
 max_radius: 40.0
 model_name: tensor-prod
 n_conv_layers: 3
-n_epochs: 300  #300 #200 #10000
+n_epochs: 1 #30 #300  #300 #200 #10000
 n_s: 30
 n_v: 10
 node_fdim: 145

@@ -38,6 +38,7 @@ class ProteinConfDataset(Dataset):
             max_protein_pairs: int = None,
             center_conformations: bool = False,
             samples_per_protein: int = None,
+            inverse_problem: bool = False,
         ):
         
         super().__init__(root=root, transform=transform)
@@ -53,6 +54,7 @@ class ProteinConfDataset(Dataset):
         self.max_protein_pairs = max_protein_pairs
         self.center_conformations = center_conformations
         self.samples_per_protein = samples_per_protein
+        self.inverse_problem = inverse_problem
 
         processed_arg_str = f"resolution={resolution}"
         if center_conformations:
@@ -86,6 +88,7 @@ class ProteinConfDataset(Dataset):
         return len(self.ids)
     
     def get(self, idx):
+        print("I am getting a protein pair now while training!")
         if self.samples_per_protein is not None:
             conf_pair_id, _ = self.ids[idx]
         else:
@@ -96,6 +99,12 @@ class ProteinConfDataset(Dataset):
         
         conf_pair_out = torch.load(f"{self.full_processed_dir}/{conf_pair_id}.pt")
         conf_pair_out.conf_id = conf_pair_id
+
+        if self.inverse_problem:
+            conf_pair_out_pos_0_copy = conf_pair_out.pos_0.clone()
+            conf_pair_out.pos_0 = conf_pair_out.pos_T
+            conf_pair_out.pos_T = conf_pair_out_pos_0_copy
+
         return conf_pair_out.clone()
     
     def preprocess_conformation_pairs(self):
@@ -104,7 +113,10 @@ class ProteinConfDataset(Dataset):
         # Loading all conformation pair ids
         with open(f"{self.raw_data_dir}/conf_pairs.txt", "r") as f:
             conf_pairs = f.readlines()
-            conf_pairs = [conf_pair.strip().split(",") for conf_pair in conf_pairs]
+            if self.inverse_problem:
+                conf_pairs = [[pair[1], pair[0]] for pair in (conf_pair.strip().split(",") for conf_pair in conf_pairs)]
+            else: 
+                conf_pairs = [conf_pair.strip().split(",") for conf_pair in conf_pairs]
 
         if self.max_protein_pairs is not None:
             conf_pairs = conf_pairs[: self.max_protein_pairs]
@@ -309,6 +321,7 @@ def build_data_loader(args):
                                        progress_every=None,
                                        center_conformations=args.center_conformations,
                                        samples_per_protein=args.samples_per_protein_train,
+                                       inverse_problem=args.inverse_problem,
                                     )
     
     val_dataset = ProteinConfDataset(root=args.data_dir, transform=transform,
@@ -317,7 +330,8 @@ def build_data_loader(args):
                                      num_workers=args.num_workers, 
                                      progress_every=None,
                                      center_conformations=args.center_conformations,
-                                     samples_per_protein=1
+                                     samples_per_protein=1,
+                                     inverse_problem=args.inverse_problem,
                                     ) 
 
     train_loader = DataLoader(dataset=train_dataset, batch_size=args.train_bs, shuffle=True)
