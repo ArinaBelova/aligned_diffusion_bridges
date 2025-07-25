@@ -12,6 +12,8 @@ from sbalign.utils.definitions import DEVICE
 from proteins.docking.dock_engine import DockingEngine
 from proteins.conf.conf_engine import ConfEngine
 
+from imagerec.imagerec_engine import ImageRecEngine
+
 from sbalign.training.diffusivity import get_diffusivity_schedule, fractional_data_transform
 
 class ProgressMonitor:
@@ -34,21 +36,45 @@ class ProgressMonitor:
                 self.metrics[metric_name] = 0.0
                 self.metric_names.append(metric_name)
             
+            #print("metric_name", metric_name, "metric_value", metric_value)
             self.metrics[metric_name] += metric_value * (1 if batch_size is None else batch_size)
 
     def summarize(self):
         return {k: np.round(v / self.count, 4) for k, v in self.metrics.items()}
 
 def train_epoch_imagerec(model, loader, 
-        optimizer, loss_fn,
+        optimizer, scheduler, loss_fn,
         grad_clip_value: float = None, 
-        ema_weights=None, dif=None, args=None):
+        ema_weights=None, dif=None, args=None, wandb=None):
     
     # put the model on train
     model.train()
     monitor = ProgressMonitor()
 
     for _, data in enumerate(loader):
+        
+        # #########################################
+        # # Log a sample training image to wandb
+        # if wandb is not None and wandb.run is not None:
+        #     # Take first image from batch for visualization
+        #     sample_lq = data["LQ"][0].cpu()  # Shape: [C,H,W]
+        #     sample_gt = data["GT"][0].cpu()
+            
+        #     # Convert to numpy and transpose to [H,W,C] for wandb
+        #     sample_lq = sample_lq.permute(1,2,0).numpy()
+        #     sample_gt = sample_gt.permute(1,2,0).numpy()
+            
+        #     # Log images
+        #     wandb.log({
+        #         "train_sample_LQ": wandb.Image(sample_lq, caption="Low Quality Input"),
+        #         "train_sample_GT": wandb.Image(sample_gt, caption="Ground Truth")
+        #     })
+            
+        #     # Exit after logging one sample (for testing)
+        #     print("Logged sample images to wandb, exiting...")
+        #     return
+        # #########################################
+        
         optimizer.zero_grad()
 
         pos_0, pos_T = data["LQ"], data["GT"]
@@ -57,7 +83,7 @@ def train_epoch_imagerec(model, loader,
         pos_T = pos_T.to(DEVICE)
 
         # transform the datapoint to x_0, t, x_t, x_T here:
-        t = np.random.uniform() * dif.t_max 
+        t = np.random.uniform() * dif.t_max
         t = t.to(DEVICE)
 
         if dif.K>0:
@@ -72,15 +98,14 @@ def train_epoch_imagerec(model, loader,
         else:
             #t = t * torch.ones(data.num_nodes) #t
             pos_t = sample_from_brownian_bridge(g=dif.g, t=t, x_0=pos_0, x_T=pos_T, t_min=0.0, t_max=1.0)
+            cond_var_t = torch.ones_like(pos_t) # just a placeholder to avoid error
 
         try:
             #data = data.to(DEVICE)
 
-            drift_x, doobs_score_x, doobs_score_x_T = model(pos_0, pos_t, t)
+            drift_x = model(pos_0, pos_t, t)
 
             loss, loss_dict = loss_fn(drift_x_pred=drift_x,
-                                      doobs_score_x_pred=doobs_score_x,
-                                      doobs_score_xT_pred=doobs_score_x_T,
                                       t=t,
                                       pos_t=pos_t,
                                       pos_T=pos_T,
@@ -95,7 +120,8 @@ def train_epoch_imagerec(model, loader,
             
             torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_value)
             optimizer.step()
-            
+            scheduler.step()
+
             if ema_weights is not None:
                 ema_weights.update(model.parameters())
             
@@ -158,7 +184,7 @@ def train_epoch_sbalign(
             
         except Exception as e:
             if 'out of memory' in str(e):
-                print('| WARNING: ran out of memory, skipping batch')
+                print('| WARNING: ran out otimepointf memory, skipping batch')
                 for p in model.parameters():
                     if p.grad is not None:
                         del p.grad  # free some memory
@@ -183,8 +209,8 @@ def test_epoch_imagerec(model, loader, loss_fn, dif):
     monitor = ProgressMonitor()
 
     for _, data in enumerate(loader):
-        pos_0, pos_T = data
-        
+        pos_0, pos_T = data["LQ"], data["GT"]
+    
         pos_0 = pos_0.to(DEVICE)
         pos_T = pos_T.to(DEVICE)
 
@@ -202,18 +228,17 @@ def test_epoch_imagerec(model, loader, loss_fn, dif):
             cond_var_t = dif.cond_var(t,dif.T,dif.omega,dif.gamma,dif.g_max)
         else:
             pos_t = sample_from_brownian_bridge(g=dif.g, t=t, x_0=pos_0, x_T=pos_T, t_min=0.0, t_max=1.0)
+            cond_var_t = torch.ones_like(pos_t) # just a placeholder to avoid error
 
 
         try:
             with torch.no_grad():
-                data = data.to(DEVICE)
+                #data = data.to(DEVICE)
                 #fractional_data_transform(data, args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K)
 
-                drift_x, doobs_score_x, doobs_score_x_T = model(data)
+                drift_x = model(pos_0, pos_t, t)
                 
                 _, loss_dict = loss_fn(drift_x_pred=drift_x,
-                                       doobs_score_x_pred=doobs_score_x,
-                                       doobs_score_xT_pred=doobs_score_x_T,
                                        t=t,
                                        pos_t=pos_t,
                                        pos_T=pos_T,
@@ -373,3 +398,37 @@ def inference_epoch_conf(model, g, orig_dataset, inference_steps: int = 100,
                 traj_dict[data['conf_id'][0]] = trajectory
 
     return traj_dict, monitor.summarize()
+
+def inference_epoch_imagerec(model, g, orig_dataset, args, inference_steps: int = 100):
+    
+    engine = ImageRecEngine(
+        model=model, g_fn=g, 
+        inference_steps=inference_steps
+    )
+
+    #monitor = ProgressMonitor()
+
+    loader = DataLoader(dataset=orig_dataset, batch_size=1, shuffle=False)
+
+    print("orig_dataset['LQ'].shape", orig_dataset[0]['LQ'].shape)
+    # for now use pytorch convention for the images
+    cleaned_images = torch.zeros((len(loader), 3, orig_dataset[0]['LQ'].shape[1], orig_dataset[0]['LQ'].shape[2]), device=DEVICE)
+    cleaned_images_half_time = torch.zeros((len(loader), 3, orig_dataset[0]['LQ'].shape[1], orig_dataset[0]['LQ'].shape[2]), device=DEVICE)
+    initial_images = torch.zeros((len(loader), 3, orig_dataset[0]['LQ'].shape[1], orig_dataset[0]['LQ'].shape[2]), device=DEVICE)
+    #args.datasets['val']['GT_size'], args.datasets['val']['GT_size']), device=DEVICE)
+    psnr_values = np.zeros(len(loader))
+
+    for idx, data in enumerate(loader):
+        cleaned_image_half_time, cleaned_image, psnr_value = engine.generate_images(data)
+        #print("in inference psnr value", psnr_value)
+        #monitor.add(psnr_value)
+        
+        #print("data['LQ'].shape", data['LQ'].shape)
+        initial_images[idx] = data['LQ']#.permute(0,1,3,2)
+        cleaned_images_half_time[idx] = cleaned_image_half_time#.permute(0,1,3,2)
+        cleaned_images[idx] = cleaned_image#.permute(0,1,3,2)
+        psnr_values[idx] = psnr_value
+
+        
+    # return initial_images, cleaned_images_half_time, cleaned_image, None 
+    return initial_images, cleaned_images_half_time, cleaned_images, psnr_values #monitor.summarize() # None 

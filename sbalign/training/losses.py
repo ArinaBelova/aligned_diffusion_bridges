@@ -181,8 +181,6 @@ def loss_function_conf(
 
 def loss_function_imagerec(
         drift_x_pred, 
-        doobs_score_x_pred, 
-        doobs_score_xT_pred,
         t,
         pos_t,
         pos_T,
@@ -209,9 +207,10 @@ def loss_function_imagerec(
 
     assert torch.max(t_diff)>0, "Can not have zero variance"
 
-    bb_drift_true = (x_diff) / t_diff
+    bb_drift_true = (x_diff) / t_diff # / torch.sqrt(t_diff) # was t_diff
+    #bb_drift_true = x_diff / torch.sqrt(t_diff)
     #print("bb_drift_true ", bb_drift_true)
-    bb_drift_pred = drift_x_pred #+ doobs_score_x_pred
+    bb_drift_pred = drift_x_pred 
 
     #print("drift_x_pred is ", drift_x_pred)
     criterion = nn.MSELoss()
@@ -220,19 +219,11 @@ def loss_function_imagerec(
 
     bb_loss = criterion(bb_drift_pred, bb_drift_true) * dt
 
-    # if doobs_score_xT_pred is not None:
-    #     reg_loss_T = (doobs_score_xT_pred ** 2).sum(dim=-1).mean()
-    # else:
-    #     reg_loss_T = torch.tensor(0.0, requires_grad=True)
-    # reg_loss_t = (doobs_score_x_pred ** 2).sum(dim=-1).mean()
-
-    loss = drift_weight * bb_loss #+ reg_weight_T * reg_loss_T + reg_weight_t * reg_loss_t
+    loss = drift_weight * bb_loss 
     
     loss_dict = {
         "loss": loss.item(), 
         "bb_loss": bb_loss.item(),
-        # "reg_loss_T": reg_loss_T.item(), 
-        # "reg_loss_t": reg_loss_t.item()
     }
 
     for key, value in loss_dict.items():

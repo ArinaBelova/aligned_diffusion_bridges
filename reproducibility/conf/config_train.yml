@@ -64,3 +64,18 @@ val_bs: 1
 wandb_entity: null
 wandb_mode: online
 weight_decay: 0.01
+
+### LQGT dataset args ###
+# mode: LQGT
+# LR_size: 128
+# GT_size: 128
+# data_type: img # as we have .png for derain; need to double-check on that in GOUB/codes/tasks/deraining/options.py
+# dataroot_LQ: sbalign/data/Rain100H/rain/X2
+# dataroot_GT: sbalign/data/GOUB/Rain100H/norain
+# use_flip: true
+# use_rot: true
+# use_swap: false
+# color: RGB
+# batch_size: 8
+# n_workers: 1 # 4 in the original
+# name: Train_Dataset # Val_Dataset

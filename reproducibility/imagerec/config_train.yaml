@@ -1,0 +1,90 @@
+task: imagerec
+distortion: derain # experiment distortion for imagerec framework 
+#is_train: true
+
+data_dir: sbalign/data
+dist: false # distributed training
+gpu_ids: 0
+
+diffusivity_schedule: fbb 
+#distance_embed_dim: 32
+drift_weight: 1.0
+dropout_p: 0.2
+early_stop_goal: min
+early_stop_metric: val_loss
+ema_decay_rate: 0.8
+grad_clip_value: 1.0 # maybe too large 5.0 ?
+inference_every: 1 #100
+inference_goal: min
+inference_metric: val_inference_rmsd
+inference_steps: 100
+log_dir: logs
+lr: 0.0001 #0.001
+#max diffusivity will come from cmd when we do a sweep over a range of values
+# max_diffusivity: 0.25 # needs to be tuned for every use case, for proteins we used 0.25
+# H,K,norm come from the cmd and parsed in setup.py
+# H: 0.1
+# K: 2
+# norm: false
+n_epochs: 1 #300 #2000 #300 #300  #300 #200 #10000
+num_workers: 1
+optim_name: adamw
+reg_weight_T: 1.0
+reg_weight_t: 10.0
+run_name: fixed #CONF_TP_MODEL-gia1ordl
+scheduler: onecycle
+scheduler_mode: min
+scheduler_patience: 50
+train_bs: 2
+transform: brownian_bridge
+val_bs: 1
+wandb_mode: online
+weight_decay: 0.01
+
+# params for the model architecture UNet imagerec
+network_G:
+  which_model_G: ConditionalUNet
+  setting:
+    in_nc: 3
+    out_nc: 3
+    nf: 64
+    depth: 4
+
+# params for the dataset imagerec
+degradation: # for some synthetic dataset that only have GTs (not deraining example but anyways it is here for now)
+  # for denoising
+  sigma: 25
+  noise_type: G # Gaussian noise: G
+
+  # for super-resolution; here we need to download the dataset from here: https://data.vision.ee.ethz.ch/cvl/DIV2K/
+  # they use scale also in testing for deraining and other cases...
+  scale: 4
+
+path:
+  pretrain_model_G: ~
+  strict_load: true
+  resume_state: ~
+
+datasets:
+  train:
+    name: Train_Dataset
+    mode: LQGT
+    dataroot_GT: Rain100H/norain/ #Rain100H/norain/
+    dataroot_LQ: Rain100H/rain/ #Rain100H/rain/
+
+    use_shuffle: true
+    n_workers: 1 #4  # per GPU
+    batch_size: 8
+    GT_size: 128
+    LR_size: 128
+    use_flip: true
+    use_rot: true
+    use_swap: false
+    color: RGB
+  val:
+    name: Val_Dataset
+    mode: LQGT
+    dataroot_GT: Rain100H/val/norain/
+    dataroot_LQ: Rain100H/val/rain/
+    GT_size: 128
+    LR_size: 128

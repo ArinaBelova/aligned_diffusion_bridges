@@ -17,10 +17,10 @@ sys.path.append(os.getcwd())
 #     print(f"{key}={value}")
 #######
 
-from imagerec.data import build_data_loader, create_dataset # what does this return: only train loader or both train and valid loader?
+from imagerec.data import build_data_loader, create_dataset # what does this return: only train loader or both train and valid loader? -> depends on the provided datasets
 from imagerec.models import build_model_from_args
 
-from sbalign.training.epoch_fns import train_epoch_imagerec, test_epoch_imagerec # test_epoch_sbalign, inference_epoch_conf
+from sbalign.training.epoch_fns import train_epoch_imagerec, test_epoch_imagerec, inference_epoch_imagerec # test_epoch_sbalign, inference_epoch_conf
 from sbalign.training.losses import loss_fn_from_args
 from sbalign.training.updaters import get_optimizer, get_scheduler, get_ema
 from sbalign.utils.sb_utils import get_diffusivity_schedule
@@ -36,14 +36,59 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
     best_val_inference_value = math.inf if args.inference_goal == 'min' else 0
     best_epoch = 0
     best_val_inference_epoch = 0
+    
 
-    print(f"On training start: K={args.K}, H={args.H}, norm={args.norm}")
+    print(f"On training start: g_max={args.max_diffusivity}, K={args.K}, H={args.H}, norm={args.norm}")
     g = get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K, norm=args.norm)
     loss_fn = loss_fn_from_args(args)
 
     logs = {'val_loss': math.inf, "val_inference_rmsd": math.inf}
 
     for epoch in range(args.n_epochs):
+
+        #########################################################
+        # Inference on validation set and PSNR statistics for validation set
+        print(f"Started inference on validation set epoch {epoch + 1}", flush=True)
+        initial_images, cleaned_images_half_time, cleaned_images, psnr_values = inference_epoch_imagerec(model=model, 
+                                                                                                        g=g,
+                                                                                                        orig_dataset=val_loader.dataset,
+                                                                                                        args=args,
+                                                                                                        inference_steps=args.inference_steps)
+        # Log images to wandb - grouped by image progression
+        for i, (initial_img, half_time_img, cleaned_img) in enumerate(zip(initial_images, cleaned_images_half_time, cleaned_images)):
+            # Create a list of images showing the progression for this specific image
+            # print("cleaned image shape ", cleaned_img.shape)
+            # print("psnr array type ", type(psnr_values))
+            # print("psnr element type ", type(psnr_values[0]))
+            image_progression = [
+                wandb.Image(initial_img, caption="Initial (Corrupted)"),
+                wandb.Image(half_time_img, caption="Half-time Denoising"), 
+                wandb.Image(cleaned_img, caption=f"Final Clean (PSNR: {psnr_values[i]})" if psnr_values is not None else "Final Clean")
+            ]
+            
+            # Log each image progression as a separate wandb entry
+            wandb.log({
+                f"epoch_{epoch+1}_image_{i+1}_progression": image_progression
+            })
+        
+        # Optional: Also log a summary table for the epoch
+        epoch_summary = []
+        for i in range(len(initial_images)):
+            epoch_summary.extend([
+                wandb.Image(initial_images[i], caption=f"Image {i+1}: Initial"),
+                wandb.Image(cleaned_images_half_time[i], caption=f"Image {i+1}: Half-time"),
+                wandb.Image(cleaned_images[i], caption=f"Image {i+1}: Final")
+            ])
+        
+        wandb.log({
+            f"epoch_{epoch+1}_all_progressions": epoch_summary
+        })
+        return 
+                
+            #########################################################
+
+
+
         if epoch > 10:
             args.inference_steps = args.inference_steps
         else:
@@ -53,9 +98,11 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
         
         train_losses = train_epoch_imagerec(
                 model=model, loader=train_loader, 
-                optimizer=optimizer, loss_fn=loss_fn,
+                optimizer=optimizer, scheduler=scheduler, 
+                loss_fn=loss_fn,
                 grad_clip_value=args.grad_clip_value, 
                 ema_weights=ema_weights, dif = g,
+                wandb=wandb
             )
         
         # Print training metrics
@@ -86,8 +133,71 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
         logs.update({'val_' + k: v for k, v in val_losses.items()})
         print(print_msg, flush=True)  
 
-        # Inference on validation set
-        # if args.inference_every > 0 and (epoch + 1) % args.inference_every == 0:
+        # Inference on validation set and PSNR statistics for validation set
+        print(f"Started inference on validation set epoch {epoch + 1}", flush=True)
+        if args.inference_every > 0 and (epoch + 1) % args.inference_every == 0:
+            initial_images, cleaned_images_half_time, cleaned_images, psnr_values = inference_epoch_imagerec(model=model, 
+                                                                                                            g=g,
+                                                                                                            orig_dataset=val_loader.dataset,
+                                                                                                            args=args,
+                                                                                                            inference_steps=args.inference_steps)
+            # Log images to wandb - grouped by image progression
+            for i, (initial_img, half_time_img, cleaned_img) in enumerate(zip(initial_images, cleaned_images_half_time, cleaned_images)):
+                # Create a list of images showing the progression for this specific image
+                # print("cleaned image shape ", cleaned_img.shape)
+                # print("psnr array type ", type(psnr_values))
+                # print("psnr element type ", type(psnr_values[0]))
+                image_progression = [
+                    wandb.Image(initial_img, caption="Initial (Corrupted)"),
+                    wandb.Image(half_time_img, caption="Half-time Denoising"), 
+                    wandb.Image(cleaned_img, caption=f"Final Clean (PSNR: {psnr_values[i]})" if psnr_values is not None else "Final Clean")
+                ]
+                
+                # Log each image progression as a separate wandb entry
+                wandb.log({
+                    f"epoch_{epoch+1}_image_{i+1}_progression": image_progression
+                })
+            
+            # Optional: Also log a summary table for the epoch
+            epoch_summary = []
+            for i in range(len(initial_images)):
+                epoch_summary.extend([
+                    wandb.Image(initial_images[i], caption=f"Image {i+1}: Initial"),
+                    wandb.Image(cleaned_images_half_time[i], caption=f"Image {i+1}: Half-time"),
+                    wandb.Image(cleaned_images[i], caption=f"Image {i+1}: Final")
+                ])
+            
+            wandb.log({
+                f"epoch_{epoch+1}_all_progressions": epoch_summary
+            })
+                                                                                                            
+            # # Log images to wandb
+            # images_to_log = []
+            # #for i, (cleaned_image, psnr_value) in enumerate(zip(cleaned_images, psnr_values)):
+            # for i, cleaned_image in enumerate(cleaned_images):
+            #     images_to_log.append(wandb.Image(
+            #         cleaned_image, 
+            #         #caption=f"PSNR: {psnr_value:.2f}"
+            #     ))
+            # wandb.log({
+            #     f"val_images_epoch_{epoch+1}": images_to_log
+            # })
+
+            if log_dir is not None:
+                os.makedirs(os.path.join(log_dir, "val_images_inference"), exist_ok=True)
+                for i, (cleaned_image, psnr_value) in enumerate(zip(cleaned_images, psnr_values)):
+                    for i, cleaned_image in enumerate(cleaned_images):
+                        image_path = os.path.join(log_dir, "val_images_inference", f"epoch_{epoch+1}_image_{i+1}.png")
+                        
+                        # Convert tensor to PIL Image and save
+                        from torchvision.utils import save_image as torch_save_image
+                        torch_save_image(cleaned_image, image_path)
+                # return this when psnr stops being None    
+                avg_psnr = np.mean(psnr_values)
+                logs.update({'val_inference_avg_psnr': avg_psnr})
+                print(f"Epoch {epoch+1}: Validation Inference Average PSNR: {avg_psnr}", flush=True)
+        #print("Finished inference on validation set", flush=True)
+
         #     traj_dict, inference_metrics = inference_epoch_conf(
         #                                     model=model, g=g, 
         #                                     orig_dataset=val_loader.dataset,
@@ -156,11 +266,13 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
                 torch.save(ema_state_dict, os.path.join(log_dir, 'best_ema_model.pt'))
             print(flush=True)
 
-        if scheduler is not None:
-            if args.early_stop_metric in logs:
-                scheduler.step(logs[args.early_stop_metric])
-            else:
-                scheduler.step(logs["val_loss"])
+        print("scheduler total steps ", scheduler.total_steps)
+
+        #if scheduler is not None:
+            # if args.early_stop_metric in logs:
+            #     scheduler.step(logs[args.early_stop_metric])
+            # else:
+            #     scheduler.step(logs["val_loss"])
 
         if log_dir is not None:
             print(f"Saving last model to {log_dir}/last_model.pt", flush=True)
@@ -201,8 +313,8 @@ def main(cmd_args=None):
 
 
     # Wandb setup
-    # wandb_setup(args)
-    # args.wandb_dir = os.path.dirname(wandb.run.dir)
+    wandb_setup(args)
+    args.wandb_dir = os.path.dirname(wandb.run.dir)
 
     print(f"Args: {args}", flush=True)
     print(flush=True)
@@ -227,9 +339,10 @@ def main(cmd_args=None):
     # Optimizers
     optimizer = get_optimizer(model=model, optim_name=args.optim_name,
                               lr=args.lr, weight_decay=args.weight_decay)
-    scheduler = get_scheduler(optimizer=optimizer, scheduler_name=args.scheduler,
+    scheduler = get_scheduler(optimizer=optimizer, args=args, scheduler_name=args.scheduler,
                               scheduler_mode=args.scheduler_mode, factor=0.7,
                               patience=args.scheduler_patience, min_lr=args.lr / 100)
+    print('scheduler is ', scheduler)
     ema = get_ema(model=model, decay_rate=args.ema_decay_rate)
 
     # Recording the full configuration with which we will train

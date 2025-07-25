@@ -92,8 +92,8 @@ class ConditionalUNet(nn.Module):
     # TODO: change dataloader
     def forward(self, pos_0, pos_t, timepoint): # # TODO: pos_0, pos_t instead of data
 
-        if isinstance(timepoint, int) or isinstance(timepoint, float):
-            timepoint = torch.tensor([timepoint]).to(pos_t.device)
+        #if isinstance(timepoint, int) or isinstance(timepoint, float): # don't need this for now as timepoint is guaranteed to be a tensor
+        timepoint = torch.tensor([timepoint]).to(pos_t.device)
         
         #x = xt - cond
         #x = torch.cat([x, cond], dim=1) # x - current timestep image, cond=mu=LQ image in imagerec framework
@@ -105,7 +105,7 @@ class ConditionalUNet(nn.Module):
         x = self.init_conv(x)
         x_ = x.clone()
 
-        t = self.time_mlp(timepoint)
+        t = self.time_mlp(timepoint) * 100 # remove this * 100
 
         h = []
 

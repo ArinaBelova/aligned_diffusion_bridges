@@ -152,22 +152,25 @@ class LQGTDataset(data.Dataset):
                 self.args.mode,
                 self.args.use_swap,
             )
-        elif LR_size is not None:
-            H, W, C = img_LR.shape
-            assert LR_size == GT_size // scale, "GT size does not match LR size"
 
-            if LR_size < H and LR_size < W:
-                # center crop
-                rnd_h = H // 2 - LR_size//2
-                rnd_w = W // 2 - LR_size//2
-                img_LR = img_LR[rnd_h : rnd_h + LR_size, rnd_w : rnd_w + LR_size, :]
-                rnd_h_GT, rnd_w_GT = int(rnd_h * scale), int(rnd_w * scale)
-                img_GT = img_GT[
-                    rnd_h_GT : rnd_h_GT + GT_size, rnd_w_GT : rnd_w_GT + GT_size, :
-                ]
+        # For now we don't do any cropping neither in training nor in validation
+        # elif LR_size is not None:
+        #     H, W, C = img_LR.shape
+        #     assert LR_size == GT_size // scale, "GT size does not match LR size"
+
+        #     if LR_size < H and LR_size < W:
+        #         # center crop
+        #         rnd_h = H // 2 - LR_size//2
+        #         rnd_w = W // 2 - LR_size//2
+        #         img_LR = img_LR[rnd_h : rnd_h + LR_size, rnd_w : rnd_w + LR_size, :]
+        #         rnd_h_GT, rnd_w_GT = int(rnd_h * scale), int(rnd_w * scale)
+        #         img_GT = img_GT[
+        #             rnd_h_GT : rnd_h_GT + GT_size, rnd_w_GT : rnd_w_GT + GT_size, :
+        #         ]
 
         # change color space if necessary
-        if self.args.color:
+        #if self.args.color:
+        if getattr(self.args, 'color', False):
             H, W, C = img_LR.shape
             img_LR = util.channel_convert(C, self.args.color, [img_LR])[
                 0
