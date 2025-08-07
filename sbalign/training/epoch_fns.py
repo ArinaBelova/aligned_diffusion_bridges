@@ -46,34 +46,33 @@ def train_epoch_imagerec(model, loader,
         optimizer, scheduler, loss_fn,
         grad_clip_value: float = None, 
         ema_weights=None, dif=None, args=None, wandb=None):
-    
+
     # put the model on train
     model.train()
     monitor = ProgressMonitor()
 
     for _, data in enumerate(loader):
+        # # #########################################
+        # # # Log a sample training image to wandb
+        # #if wandb is not None and wandb.run is not None:
+        # # Take first image from batch for visualization
+        # sample_lq = data["LQ"][0].cpu()  # Shape: [C,H,W]
+        # sample_gt = data["GT"][0].cpu()
         
-        # #########################################
-        # # Log a sample training image to wandb
-        # if wandb is not None and wandb.run is not None:
-        #     # Take first image from batch for visualization
-        #     sample_lq = data["LQ"][0].cpu()  # Shape: [C,H,W]
-        #     sample_gt = data["GT"][0].cpu()
-            
-        #     # Convert to numpy and transpose to [H,W,C] for wandb
-        #     sample_lq = sample_lq.permute(1,2,0).numpy()
-        #     sample_gt = sample_gt.permute(1,2,0).numpy()
-            
-        #     # Log images
-        #     wandb.log({
-        #         "train_sample_LQ": wandb.Image(sample_lq, caption="Low Quality Input"),
-        #         "train_sample_GT": wandb.Image(sample_gt, caption="Ground Truth")
-        #     })
-            
-        #     # Exit after logging one sample (for testing)
-        #     print("Logged sample images to wandb, exiting...")
-        #     return
-        # #########################################
+        # # Convert to numpy and transpose to [H,W,C] for wandb
+        # sample_lq = sample_lq.permute(1,2,0).numpy()
+        # sample_gt = sample_gt.permute(1,2,0).numpy()
+        
+        # # Log images
+        # wandb.log({
+        #     "train_sample_LQ": wandb.Image(sample_lq, caption="Low Quality Input"),
+        #     "train_sample_GT": wandb.Image(sample_gt, caption="Ground Truth")
+        # })
+        
+        # # Exit after logging one sample (for testing)
+        # print("Logged sample images to wandb, exiting...")
+        # return
+        # # #########################################
         
         optimizer.zero_grad()
 
@@ -85,13 +84,20 @@ def train_epoch_imagerec(model, loader,
         # transform the datapoint to x_0, t, x_t, x_T here:
         t = np.random.uniform() * dif.t_max
         t = t.to(DEVICE)
+        
 
         if dif.K>0:
             #t = t * torch.ones((data.num_nodes, 1)) #t
+            dif.T = dif.T.to(DEVICE)
+            dif.omega = dif.omega.to(DEVICE)
+            dif.gamma = dif.gamma.to(DEVICE)
+            dif.g_max = dif.g_max.to(DEVICE)
+            t = t[None, None]
+
             z = dif.sample_pinned(t, dif.T, pos_0, pos_T, dif.omega, dif.gamma, dif.g_max)
 
-            x = z[:,:,0]
-            Y = z[:,:,1:]
+            x = z[:,:,:,:,0]
+            Y = z[:,:,:,:,1:]
             pos_t = dif.input_transform(x,Y,t,dif.T,dif.omega, dif.gamma,dif.g_max)
             cond_var_t = dif.cond_var(t,dif.T,dif.omega,dif.gamma,dif.g_max)
             # cond_var_t = cond_var_t.to(DEVICE)
@@ -101,15 +107,13 @@ def train_epoch_imagerec(model, loader,
             cond_var_t = torch.ones_like(pos_t) # just a placeholder to avoid error
 
         try:
-            #data = data.to(DEVICE)
-
             drift_x = model(pos_0, pos_t, t)
 
             loss, loss_dict = loss_fn(drift_x_pred=drift_x,
                                       t=t,
                                       pos_t=pos_t,
                                       pos_T=pos_T,
-                                      cond_var_t=cond_var_t)
+                                      cond_var_t=cond_var_t)                              
                                     
             monitor.add(loss_dict)
 
@@ -217,13 +221,14 @@ def test_epoch_imagerec(model, loader, loss_fn, dif):
         # transform the datapoint to x_0, t, x_t, x_T here:
         t = np.random.uniform() * dif.t_max 
         t = t.to(DEVICE)
-
+        
         if dif.K>0:
             #t = t * torch.ones((data.num_nodes, 1)) #t
+            t = t[None, None]
             z = dif.sample_pinned(t, dif.T, pos_0, pos_T, dif.omega, dif.gamma, dif.g_max)
 
-            x = z[:,:,0]
-            Y = z[:,:,1:]
+            x = z[:,:,:,:,0]
+            Y = z[:,:,:,:,1:]
             pos_t = dif.input_transform(x,Y,t,dif.T,dif.omega, dif.gamma,dif.g_max)
             cond_var_t = dif.cond_var(t,dif.T,dif.omega,dif.gamma,dif.g_max)
         else:
@@ -410,23 +415,28 @@ def inference_epoch_imagerec(model, g, orig_dataset, args, inference_steps: int 
 
     loader = DataLoader(dataset=orig_dataset, batch_size=1, shuffle=False)
 
-    print("orig_dataset['LQ'].shape", orig_dataset[0]['LQ'].shape)
+    #print("orig_dataset['LQ'].shape", orig_dataset[0]['LQ'].shape)
     # for now use pytorch convention for the images
-    cleaned_images = torch.zeros((len(loader), 3, orig_dataset[0]['LQ'].shape[1], orig_dataset[0]['LQ'].shape[2]), device=DEVICE)
-    cleaned_images_half_time = torch.zeros((len(loader), 3, orig_dataset[0]['LQ'].shape[1], orig_dataset[0]['LQ'].shape[2]), device=DEVICE)
-    initial_images = torch.zeros((len(loader), 3, orig_dataset[0]['LQ'].shape[1], orig_dataset[0]['LQ'].shape[2]), device=DEVICE)
-    #args.datasets['val']['GT_size'], args.datasets['val']['GT_size']), device=DEVICE)
+    #cleaned_images = torch.zeros((len(loader), 3, orig_dataset[0]['LQ'].shape[1], orig_dataset[0]['LQ'].shape[2]), device=DEVICE)
+    #cleaned_images_half_time = torch.zeros((len(loader), 3, orig_dataset[0]['LQ'].shape[1], orig_dataset[0]['LQ'].shape[2]), device=DEVICE)
+    #initial_images = torch.zeros((len(loader), 3, orig_dataset[0]['LQ'].shape[1], orig_dataset[0]['LQ'].shape[2]), device=DEVICE)
+    cleaned_images = []
+    cleaned_images_half_time = []
+    initial_images = []
     psnr_values = np.zeros(len(loader))
 
     for idx, data in enumerate(loader):
         cleaned_image_half_time, cleaned_image, psnr_value = engine.generate_images(data)
         #print("in inference psnr value", psnr_value)
         #monitor.add(psnr_value)
-        
-        #print("data['LQ'].shape", data['LQ'].shape)
-        initial_images[idx] = data['LQ']#.permute(0,1,3,2)
-        cleaned_images_half_time[idx] = cleaned_image_half_time#.permute(0,1,3,2)
-        cleaned_images[idx] = cleaned_image#.permute(0,1,3,2)
+    
+        # initial_images[idx] = data['LQ']
+        # cleaned_images_half_time[idx] = cleaned_image_half_time
+        # cleaned_images[idx] = cleaned_image
+
+        initial_images.append(data['LQ'])
+        cleaned_images_half_time.append(cleaned_image_half_time)
+        cleaned_images.append(cleaned_image)
         psnr_values[idx] = psnr_value
 
         

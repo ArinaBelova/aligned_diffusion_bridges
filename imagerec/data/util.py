@@ -49,6 +49,7 @@ def get_image_paths(data_type, dataroot):
             return paths
         else:
             raise NotImplementedError('data_type [{:s}] is not recognized.'.format(data_type))
+    #return paths, sizes        
 
 
 def _read_img_lmdb(env, key, size):
@@ -66,7 +67,11 @@ def read_img(env, path, size=None):
     '''read image by cv2 or from lmdb
     return: Numpy float32, HWC, BGR, [0,1]'''
     if env is None:  # img
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Image file not found: {path}")
         img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+        if img is None:
+            raise ValueError(f"Failed to load image from: {path}")
     else:
         img = _read_img_lmdb(env, path, size)
     img = img.astype(np.float32) / 255.
@@ -396,6 +401,101 @@ def load_ker_map_list(path):
         real_ker_map_list.append(batch_kermap[i])
 
     return real_ker_map_list
+
+def generate_fixed_mask(mask_type='center_square', size=(256, 256), mask_size_ratio=0.5):
+    """
+    Generate a fixed mask for inpainting.
+    
+    Args:
+        mask_type (str): Type of mask - 'center_square', 'random_squares', 'stripes', 'circle'
+        size (tuple): Image size (height, width)
+        mask_size_ratio (float): Ratio of mask size to image size
+    
+    Returns:
+        numpy.ndarray: Binary mask with shape (H, W, 3) where 1 = keep, 0 = inpaint
+    """
+    h, w = size
+    mask = np.ones((h, w), dtype=np.float32)
+    
+    if mask_type == 'center_square':
+        # Square mask in the center
+        mask_h = int(h * mask_size_ratio)
+        mask_w = int(w * mask_size_ratio)
+        start_h = (h - mask_h) // 2
+        start_w = (w - mask_w) // 2
+        mask[start_h:start_h + mask_h, start_w:start_w + mask_w] = 0
+        
+    elif mask_type == 'random_squares':
+        # Multiple random square holes
+        num_squares = 5
+        square_size = int(min(h, w) * mask_size_ratio / 3)
+        for _ in range(num_squares):
+            y = np.random.randint(0, h - square_size)
+            x = np.random.randint(0, w - square_size)
+            mask[y:y + square_size, x:x + square_size] = 0
+            
+    elif mask_type == 'stripes':
+        # Horizontal stripes
+        stripe_width = int(h * mask_size_ratio / 5)
+        for i in range(0, h, stripe_width * 2):
+            mask[i:i + stripe_width, :] = 0
+            
+    elif mask_type == 'circle':
+        # Circular mask in center
+        center_y, center_x = h // 2, w // 2
+        radius = int(min(h, w) * mask_size_ratio / 2)
+        y, x = np.ogrid[:h, :w]
+        circle_mask = (x - center_x) ** 2 + (y - center_y) ** 2 <= radius ** 2
+        mask[circle_mask] = 0
+    
+    # Convert to 3-channel mask (H, W, 3)
+    mask = np.stack([mask, mask, mask], axis=2)
+    
+    return mask
+
+def mask_to_fixed(cv2_image, mask_type='center_square', mask_size_ratio=0.2):#, wandb=None):
+    """
+    Apply a fixed generated mask to tensor (modified version of your original function).
+    
+    Args:
+        cv2_image: Input cv2 image (numpy array) with shape (H, W, 3)
+        mask_type: Type of mask to generate
+        mask_size_ratio: Size ratio of the mask
+    
+    Returns:
+        Masked tensor where masked regions are set to 1.0
+    """
+
+    h, w = cv2_image.shape[:2]
+    # Generate mask
+    mask = generate_fixed_mask(mask_type, (h, w), mask_size_ratio)
+
+    # Normalize cv2 image to 0-1 range
+    #image_normalized = cv2_image.astype(np.float32) / 255.0
+    # Apply mask (1 = keep original, 0 = set to 1.0 for inpainting)
+    masked_image = mask * cv2_image + (1.0 - mask)
+    # Convert back to cv2 format (0-255)
+    #masked_image = (masked_image * 255).astype(np.uint8)
+    
+    # Create visualization panel showing all steps
+    # try:
+    #     if wandb.run is not None:
+    #         # Create 2x2 grid
+    #         top_row = np.hstack([cv2_image, mask])
+    #         bottom_row = np.hstack([masked_image, masked_image])
+    #         combined = np.vstack([top_row, bottom_row])
+            
+    #         wandb.log({
+    #             "inpainting_steps": wandb.Image(
+    #                 combined,
+    #                 caption="Top left: Original Image, Top right: Mask, Bottom left: Normalized Image, Bottom right: Masked Result"
+    #             )
+    #         })
+    # except ImportError:
+    #     pass  # Skip logging if wandb not installed
+    # except Exception as e:
+    #     print(f"Warning: Could not log inpainting visualization to wandb: {str(e)}")
+    return masked_image
 
 
 if __name__ == '__main__':

@@ -22,13 +22,14 @@ class LQGTDataset(data.Dataset):
     The pair is ensured by 'sorted' function, so please check the name convention.
     """
 
-    def __init__(self, args):
+    def __init__(self, args, distortion):#, wandb=None):
         super().__init__()
         self.LR_paths, self.GT_paths = None, None
         self.LR_env, self.GT_env = None, None  # environment for lmdb
         self.LR_size, self.GT_size = args.LR_size, args.GT_size
         self.args = args
-
+        self.distortion = distortion
+        #self.wandb = wandb
         # read image list from lmdb or image files
         if self.args.data_type == "lmdb":
             self.LR_paths, self.LR_sizes = util.get_image_paths(
@@ -105,6 +106,21 @@ class LQGTDataset(data.Dataset):
             else:
                 resolution = None
             img_LR = util.read_img(self.LR_env, LR_path, resolution)
+        # geenrate a LR image for inpainting:    
+        elif self.distortion == "inpaint":
+            # # Log original image to wandb
+            # if self.wandb and self.wandb.run is not None:
+            #     # Convert BGR to RGB for visualization
+            #     img_GT_rgb = cv2.cvtColor(img_GT, cv2.COLOR_BGR2RGB)
+            #     # Convert from float [0,1] to uint8 [0,255]
+            #     img_GT_rgb = (img_GT_rgb * 255).astype(np.uint8)
+            #     self.wandb.log({
+            #         "original_image": self.wandb.Image(
+            #             img_GT_rgb,
+            #             caption="Original Image Before Inpainting"
+            #         )
+            #     })
+            img_LR = util.mask_to_fixed(img_GT) #, wandb=self.wandb) # not normalised image yet
         else:  # down-sampling on-the-fly
             # randomly scale during training
             if self.args.phase == "train":
@@ -132,17 +148,19 @@ class LQGTDataset(data.Dataset):
                 img_LR = np.expand_dims(img_LR, axis=2)
 
         if self.args.phase == "train":
-            H, W, C = img_LR.shape
-            assert LR_size == GT_size // scale, "GT size does not match LR size"
+            if self.distortion == "derain":
+                # For now we don't do any cropping in inpainting
+                H, W, C = img_LR.shape
+                assert LR_size == GT_size // scale, "GT size does not match LR size"
 
-            # randomly crop
-            rnd_h = random.randint(0, max(0, H - LR_size))
-            rnd_w = random.randint(0, max(0, W - LR_size))
-            img_LR = img_LR[rnd_h : rnd_h + LR_size, rnd_w : rnd_w + LR_size, :]
-            rnd_h_GT, rnd_w_GT = int(rnd_h * scale), int(rnd_w * scale)
-            img_GT = img_GT[
-                rnd_h_GT : rnd_h_GT + GT_size, rnd_w_GT : rnd_w_GT + GT_size, :
-            ]
+                # randomly crop
+                rnd_h = random.randint(0, max(0, H - LR_size))
+                rnd_w = random.randint(0, max(0, W - LR_size))
+                img_LR = img_LR[rnd_h : rnd_h + LR_size, rnd_w : rnd_w + LR_size, :]
+                rnd_h_GT, rnd_w_GT = int(rnd_h * scale), int(rnd_w * scale)
+                img_GT = img_GT[
+                    rnd_h_GT : rnd_h_GT + GT_size, rnd_w_GT : rnd_w_GT + GT_size, :
+                ]
 
             # augmentation - flip, rotate
             img_LR, img_GT = util.augment(

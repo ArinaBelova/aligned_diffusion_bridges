@@ -5,11 +5,10 @@ from argparse import Namespace
 import copy
 from typing import Callable
 
-from sbalign.training.diffusivity import get_diffusivity_schedule
+from sbalign.training.diffusivity import get_diffusivity_schedule, matrix_vector_mp
 from sbalign.utils.sb_utils import get_t_schedule
 from sbalign.utils.definitions import DEVICE
 from sbalign.utils.ops import to_numpy
-
 
 
 class ImageRecEngine:
@@ -40,7 +39,7 @@ class ImageRecEngine:
 
     def generate_image(self, pos_0):
         pos_orig = pos_0.clone().to(DEVICE)
-        pos_t = pos_0.clone().to(DEVICE)
+        #pos_t = pos_0.clone().to(DEVICE)
 
         if self.g_fn.K > 0:        
             pos = torch.cat([pos_orig[:,:,:,:,None],torch.zeros(pos_orig.shape[0], pos_orig.shape[1], pos_orig.shape[2], pos_orig.shape[3], self.g_fn.K, device=DEVICE)],dim=-1)
@@ -56,7 +55,38 @@ class ImageRecEngine:
                 T = self.g_fn.T.to(DEVICE)
             
                 if self.g_fn.K > 0:
-                    pass
+                    t = self.t_schedule[t_idx].float()
+                   # data.t = (t * data.x.new_ones(data.num_nodes))#.float()
+                    t = t[None,None].to(DEVICE)
+                    T = self.g_fn.T.to(DEVICE)
+
+                    x = pos[:,:,:,:,0]
+                    Y = pos[:,:,:,:,1:]
+                    F = self.g_fn.F_t[None,None,None,None,:,:].to(DEVICE)
+                    G = self.g_fn.G_t[None,None,None,None,:].to(DEVICE)
+                    GG = self.g_fn.G_t[None,None,None,None,:,None].to(DEVICE) * self.g_fn.G_t[None,None,None,None,None,:].to(DEVICE)
+                    dw = torch.sqrt(self.dt) * torch.randn_like(x)[:,:,:,:,None]
+
+                    pos_t = self.g_fn.input_transform(x,Y,t,T,self.g_fn.omega.to(DEVICE), self.g_fn.gamma.to(DEVICE),self.g_fn.g_max.to(DEVICE))
+                    # print('for K>0 - data.t:',data.t.dtype,flush=True)
+                    # print('for K>0 - data.pos_t:',data.pos_t.dtype,flush=True)
+                    drift_pos_x = self.model(pos_0, pos_t, t)
+
+                    drift_pos = self.g_fn.score(drift_pos_x.to(DEVICE),t,T,self.g_fn.omega.to(DEVICE), self.g_fn.gamma.to(DEVICE),self.g_fn.g_max.to(DEVICE))
+                    dpos = (matrix_vector_mp(F, pos) + matrix_vector_mp(GG, drift_pos))*self.dt + G * dw
+
+                    # print("pos ", pos.shape)
+                    # print("dpos shape ", dpos.shape)
+
+                    # print("matrix_vector_mp(GG, drift_pos) ", matrix_vector_mp(GG, drift_pos).shape)
+                    # print("matrix_vector_mp(F, pos) ", matrix_vector_mp(F, pos).shape)
+                    # print("self.dt ", self.dt.shape)
+                    # print("drift_pos_x ", drift_pos_x.shape)
+                    # print("drift_pos ", drift_pos.shape)
+                    # print("G * dw ", (G * dw).shape)
+                    
+                    pos = pos + dpos
+                    trajectory.append(pos)
                 else:
                     g_t = self.g_fn.g(t).to(DEVICE)
                     std = torch.sqrt(((self.g_fn.g(t)**2)*(1-t)))
@@ -71,10 +101,20 @@ class ImageRecEngine:
                     trajectory.append(pos_t)
 
                 if t_idx == self.inference_steps // 2:
-                    half_time_image = pos_t   
+                    if self.g_fn.K > 0:
+                        half_time_image = pos
+                    else:                        
+                        half_time_image = pos_t   
+
+        trajectory = torch.stack(trajectory, dim=0)
+
+        print("half_time_image shape ", half_time_image.shape)
+        print("half_time_image[:,:,:,:,0] shape ", half_time_image[:,:,:,:,0].shape)
+        print("trajectory[-1,:,:,:,:,0] shape ", trajectory[-1,:,:,:,:,0].shape)
+        print("trajectory[:,:,:,:,0] shape ", trajectory[:,:,:,:,0].shape)
 
         if self.g_fn.K>0:
-            return half_time_image[:,:,:,:,0], trajectory[-1,:,:,:,:,0], trajectory[:,:,:,:,0] # not sure here about the dimensions...
+            return half_time_image[:,:,:,:,0], trajectory[-1,:,:,:,:,0], trajectory[0,:,:,:,:,0] # dimensions: [1, 3, 321, 481], [1, 3, 321, 481], ([1, 3, 321, 6])
         else:
             return half_time_image, trajectory[-1], trajectory
 

@@ -64,7 +64,7 @@ class FractionalSchrödingerBridge(nn.Module):
 
     """Abstract class for an approximate fractional schrödinger bridge process"""
 
-    def __init__(self, H=0.5, K=5, norm=False, g_max=1.0, gamma_max=20.0, gamma_min=0.1, approx_cov=False, T=1.0, pd_eps=1e-4, threshold=1e-3, device="cpu"):
+    def __init__(self, H=0.5, K=5, norm=False, g_max=1.0, gamma_max=20.0, gamma_min=0.1, approx_cov=False, T=1.0, pd_eps=1e-4, threshold=1e-3, device=DEVICE): # "cpu"
         super(FractionalSchrödingerBridge, self).__init__()
 
         """parameters of fBM approximation"""
@@ -266,6 +266,16 @@ class FractionalSchrödingerBridge(nn.Module):
 
         weight = omega_ij/ gamma_ij
         #S = weight * (torch.exp(t*gamma_ij) -torch.exp(s*(gamma_ij))) * torch.exp(-T*gamma_j - t*gamma_i) 
+
+        # print("t device is ", t.device)
+        # print("s device is ", s.device)
+        # print("T device is ", T.device)
+        # print("weight device is ", weight.device)
+        # print("gamma_i device is ", gamma_i.device)
+        # print("gamma_j device is ", gamma_j.device)
+
+
+
         S = weight * (torch.exp(-(T-t)*gamma_j) - torch.exp(-(T-s)*gamma_j)* torch.exp(- (t-s)*gamma_i))
         return g**2 * (torch.sum(S,axis=(1,2)))
     
@@ -348,11 +358,11 @@ class FractionalSchrödingerBridge(nn.Module):
 
         s = torch.zeros_like(t)
 
-        mu = torch.zeros(bs,ch_dim,h,w,K+1)  #torch.zeros(bs,d,K+1) # adjust for h/w
+        mu = torch.zeros((bs,ch_dim,h,w,K+1), device=DEVICE)  #torch.zeros(bs,d,K+1) # adjust for h/w
         mu[:,:,:,:,0] = x0
 
-        Sig_zx = torch.zeros(bs,K+1)
-        
+        Sig_zx = torch.zeros((bs,K+1), device=DEVICE)
+
         Sig_zx[:,0] = self.covX(s,t,T, omega, gamma, g)
         Sig_zx[:,1:] = self.covYX(t,T, omega, gamma, g)
 
@@ -360,7 +370,7 @@ class FractionalSchrödingerBridge(nn.Module):
 
         mu_bar = mu + (1/var[:,None,None,:,:]) * Sig_zx[:, None, None, None, :] * ((xT-x0)[:,:,:,:,None]) # adjust var/Sig_zx
 
-        Sig_bar = self.covZ(t,t,omega,gamma,g) - (1/var) * (Sig_zx[:,:,None] * Sig_zx[:,None,:]) # TODO: shall it be in the images of dimension [b_s, K, K]?
+        Sig_bar = self.covZ(t,t,omega,gamma,g).to(DEVICE) - (1/var) * (Sig_zx[:,:,None] * Sig_zx[:,None,:]) # TODO: shall it be in the images of dimension [b_s, K, K]?
 
         assert (Sig_bar.transpose(1, 2) == Sig_bar).all(), f'Covariance is not symmetric'
 
@@ -398,7 +408,7 @@ class FractionalSchrödingerBridge(nn.Module):
         std = 1.0
         scale = torch.ones(1,1,self.K+1).to(DEVICE)
         scale[:,:,1:] = omega * self.zeta(t,T, gamma, g_max)
-        return scale * score_x[:,:,None] / std
+        return scale[:,:,None,None,:] * score_x[:,:,:,:,None] / std
     
     def mu(self,t):
         return torch.zeros_like(t)
@@ -706,7 +716,7 @@ class FractionalSchrödingerBridge(nn.Module):
 
 
 
-def sample_from_batch_multivariate_normal(cov_matrix, c=2,h=1,w=1,batch_size=128, aug_dim=6, device='cpu'):
+def sample_from_batch_multivariate_normal(cov_matrix, c=2,h=1,w=1,batch_size=128, aug_dim=6, device=DEVICE):
 
     # Ensure covariance matrix has shape [batch_size, dim, dim]
     assert cov_matrix.shape == (batch_size, aug_dim, aug_dim), "Covariance matrix must have shape [batch_size, dim, dim]"

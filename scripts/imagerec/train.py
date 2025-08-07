@@ -9,7 +9,7 @@ import math
 #######
 #  Hack for the server to avoid the horrible setup.py script
 import os
-os.chdir("/home/fe/belova/projects/bridges/aligned_diffusion_bridges") 
+os.chdir("/data/cluster/users/belova/projects/aligned_diffusion_bridges") 
 import sys
 sys.path.append(os.getcwd())
 
@@ -45,57 +45,13 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
     logs = {'val_loss': math.inf, "val_inference_rmsd": math.inf}
 
     for epoch in range(args.n_epochs):
-
-        #########################################################
-        # Inference on validation set and PSNR statistics for validation set
-        print(f"Started inference on validation set epoch {epoch + 1}", flush=True)
-        initial_images, cleaned_images_half_time, cleaned_images, psnr_values = inference_epoch_imagerec(model=model, 
-                                                                                                        g=g,
-                                                                                                        orig_dataset=val_loader.dataset,
-                                                                                                        args=args,
-                                                                                                        inference_steps=args.inference_steps)
-        # Log images to wandb - grouped by image progression
-        for i, (initial_img, half_time_img, cleaned_img) in enumerate(zip(initial_images, cleaned_images_half_time, cleaned_images)):
-            # Create a list of images showing the progression for this specific image
-            # print("cleaned image shape ", cleaned_img.shape)
-            # print("psnr array type ", type(psnr_values))
-            # print("psnr element type ", type(psnr_values[0]))
-            image_progression = [
-                wandb.Image(initial_img, caption="Initial (Corrupted)"),
-                wandb.Image(half_time_img, caption="Half-time Denoising"), 
-                wandb.Image(cleaned_img, caption=f"Final Clean (PSNR: {psnr_values[i]})" if psnr_values is not None else "Final Clean")
-            ]
-            
-            # Log each image progression as a separate wandb entry
-            wandb.log({
-                f"epoch_{epoch+1}_image_{i+1}_progression": image_progression
-            })
-        
-        # Optional: Also log a summary table for the epoch
-        epoch_summary = []
-        for i in range(len(initial_images)):
-            epoch_summary.extend([
-                wandb.Image(initial_images[i], caption=f"Image {i+1}: Initial"),
-                wandb.Image(cleaned_images_half_time[i], caption=f"Image {i+1}: Half-time"),
-                wandb.Image(cleaned_images[i], caption=f"Image {i+1}: Final")
-            ])
-        
-        wandb.log({
-            f"epoch_{epoch+1}_all_progressions": epoch_summary
-        })
-        return 
-                
-            #########################################################
-
-
-
         if epoch > 10:
             args.inference_steps = args.inference_steps
         else:
             args.inference_steps = 10
         print(f"Epoch #{epoch + 1}")
         log_dict = {}
-        
+
         train_losses = train_epoch_imagerec(
                 model=model, loader=train_loader, 
                 optimizer=optimizer, scheduler=scheduler, 
@@ -141,16 +97,16 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
                                                                                                             orig_dataset=val_loader.dataset,
                                                                                                             args=args,
                                                                                                             inference_steps=args.inference_steps)
+            
             # Log images to wandb - grouped by image progression
-            for i, (initial_img, half_time_img, cleaned_img) in enumerate(zip(initial_images, cleaned_images_half_time, cleaned_images)):
+            #for i, (initial_img, half_time_img, cleaned_img) in enumerate(zip(initial_images, cleaned_images_half_time, cleaned_images)):
+            for i in range(args.display_on_inference):
                 # Create a list of images showing the progression for this specific image
-                # print("cleaned image shape ", cleaned_img.shape)
-                # print("psnr array type ", type(psnr_values))
-                # print("psnr element type ", type(psnr_values[0]))
+               
                 image_progression = [
-                    wandb.Image(initial_img, caption="Initial (Corrupted)"),
-                    wandb.Image(half_time_img, caption="Half-time Denoising"), 
-                    wandb.Image(cleaned_img, caption=f"Final Clean (PSNR: {psnr_values[i]})" if psnr_values is not None else "Final Clean")
+                    wandb.Image(initial_images[i], caption="Initial (Corrupted)"),
+                    wandb.Image(cleaned_images_half_time[i], caption="Half-time Denoising"), 
+                    wandb.Image(cleaned_images[i], caption=f"Final Clean (PSNR: {psnr_values[i]})" if psnr_values is not None else "Final Clean")
                 ]
                 
                 # Log each image progression as a separate wandb entry
@@ -159,17 +115,17 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
                 })
             
             # Optional: Also log a summary table for the epoch
-            epoch_summary = []
-            for i in range(len(initial_images)):
-                epoch_summary.extend([
-                    wandb.Image(initial_images[i], caption=f"Image {i+1}: Initial"),
-                    wandb.Image(cleaned_images_half_time[i], caption=f"Image {i+1}: Half-time"),
-                    wandb.Image(cleaned_images[i], caption=f"Image {i+1}: Final")
-                ])
+            # epoch_summary = []
+            # for i in range(len(initial_images)):
+            #     epoch_summary.extend([
+            #         wandb.Image(initial_images[i], caption=f"Image {i+1}: Initial"),
+            #         wandb.Image(cleaned_images_half_time[i], caption=f"Image {i+1}: Half-time"),
+            #         wandb.Image(cleaned_images[i], caption=f"Image {i+1}: Final")
+            #     ])
             
-            wandb.log({
-                f"epoch_{epoch+1}_all_progressions": epoch_summary
-            })
+            # wandb.log({
+            #     f"epoch_{epoch+1}_all_progressions": epoch_summary
+            # })
                                                                                                             
             # # Log images to wandb
             # images_to_log = []
@@ -306,11 +262,10 @@ def main(cmd_args=None):
     print('args after concatenating the config args set: ', args, flush=True)
 
     from options import parse, dict_to_nonedict
-    if args.distortion == "derain":
-        args = parse(args, is_train=True)
-        args = dict_to_nonedict(args)
-        print('args after parsing in the imagerec framework ', args)
 
+    args = parse(args, is_train=True)
+    args = dict_to_nonedict(args)
+    print('args after parsing in the imagerec framework ', args)
 
     # Wandb setup
     wandb_setup(args)
@@ -324,9 +279,9 @@ def main(cmd_args=None):
 
     # Datasets
     #print("Training dataset arguments: ", args.datasets.train)
-    dataset_train = create_dataset(SimpleNamespace(**args.datasets["train"]))
-    dataset_val = create_dataset(SimpleNamespace(**args.datasets["val"]))
-    train_loader, val_loader = build_data_loader(dataset_train, dataset_val, args) # (dataset_train, dataset_val, args) 
+    dataset_train = create_dataset(SimpleNamespace(**args.datasets["train"]), distortion=args.distortion)#, wandb=wandb)
+    dataset_val = create_dataset(SimpleNamespace(**args.datasets["val"]), distortion=args.distortion)#, wandb=wandb)
+    train_loader, val_loader = build_data_loader(dataset_train, dataset_val, args) 
 
     # Model
     model = build_model_from_args(args.network_G) #build_model_from_args(SimpleNamespace(**args["network_G"]))

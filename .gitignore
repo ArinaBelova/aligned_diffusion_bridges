@@ -44,9 +44,19 @@ dump*
 sb_align/data/
 *.pdb;
 
+# data
+Rain100H/*
+Rain100L/*
+celebahq256_imgs/*
+sbalign/data/processed/*
+sbalign/data/raw/*
+sbalign/data_test/*
+wandb/*
+*.csv
+
+# misc + models
 reproducibility/moon/model/*
-reproducibility/*
-experiments/wand/*
+experiments/wandb/*
 *.pt
 logs/*
-sb_align/data/*
+output_logs/*

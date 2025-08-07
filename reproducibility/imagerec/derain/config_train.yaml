@@ -1,5 +1,5 @@
 task: imagerec
-distortion: derain # experiment distortion for imagerec framework 
+distortion: derain # inpaint # experiment distortion for imagerec framework 
 #is_train: true
 
 data_dir: sbalign/data
@@ -14,19 +14,21 @@ early_stop_goal: min
 early_stop_metric: val_loss
 ema_decay_rate: 0.8
 grad_clip_value: 1.0 # maybe too large 5.0 ?
-inference_every: 1 #100
+inference_every: 1 #50 #400
 inference_goal: min
 inference_metric: val_inference_rmsd
 inference_steps: 100
+display_on_inference: 10
 log_dir: logs
 lr: 0.0001 #0.001
 #max diffusivity will come from cmd when we do a sweep over a range of values
-# max_diffusivity: 0.25 # needs to be tuned for every use case, for proteins we used 0.25
+max_diffusivity: 0.25 # needs to be tuned for every use case, for proteins we used 0.25
 # H,K,norm come from the cmd and parsed in setup.py
-# H: 0.1
-# K: 2
-# norm: false
-n_epochs: 1 #300 #2000 #300 #300  #300 #200 #10000
+H: 0.1
+K: 5
+norm: true
+
+n_epochs: 1 #300 #4000 #2000 #300 #300  #300 #200 #10000
 num_workers: 1
 optim_name: adamw
 reg_weight_T: 1.0

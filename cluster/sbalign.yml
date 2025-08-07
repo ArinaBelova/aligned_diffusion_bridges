@@ -24,6 +24,7 @@ dependencies:
     - e3nn
     - opencv-python-headless==4.10.0.84  #==4.6.0.66
     - lmdb
+    - lightning
     # - mkl==2022.1.0
     # - libglib2.0-0 
     # - libgl1
