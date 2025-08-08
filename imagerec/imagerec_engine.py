@@ -10,6 +10,8 @@ from sbalign.utils.sb_utils import get_t_schedule
 from sbalign.utils.definitions import DEVICE
 from sbalign.utils.ops import to_numpy
 
+from torchmetrics.image import StructuralSimilarityIndexMeasure
+from torchmetrics.image.fid import FrechetInceptionDistance
 
 class ImageRecEngine:
     def __init__(self,
@@ -39,7 +41,6 @@ class ImageRecEngine:
 
     def generate_image(self, pos_0):
         pos_orig = pos_0.clone().to(DEVICE)
-        #pos_t = pos_0.clone().to(DEVICE)
 
         if self.g_fn.K > 0:        
             pos = torch.cat([pos_orig[:,:,:,:,None],torch.zeros(pos_orig.shape[0], pos_orig.shape[1], pos_orig.shape[2], pos_orig.shape[3], self.g_fn.K, device=DEVICE)],dim=-1)
@@ -88,6 +89,7 @@ class ImageRecEngine:
                     pos = pos + dpos
                     trajectory.append(pos)
                 else:
+                    pos_t = pos_0.clone().to(DEVICE)
                     g_t = self.g_fn.g(t).to(DEVICE)
                     std = torch.sqrt(((self.g_fn.g(t)**2)*(1-t)))
                     drift = self.model(pos_0, pos_t, t) #/ std
@@ -108,10 +110,10 @@ class ImageRecEngine:
 
         trajectory = torch.stack(trajectory, dim=0)
 
-        print("half_time_image shape ", half_time_image.shape)
-        print("half_time_image[:,:,:,:,0] shape ", half_time_image[:,:,:,:,0].shape)
-        print("trajectory[-1,:,:,:,:,0] shape ", trajectory[-1,:,:,:,:,0].shape)
-        print("trajectory[:,:,:,:,0] shape ", trajectory[:,:,:,:,0].shape)
+        # print("half_time_image shape ", half_time_image.shape)
+        # print("half_time_image[:,:,:,:,0] shape ", half_time_image[:,:,:,:,0].shape)
+        # print("trajectory[-1,:,:,:,:,0] shape ", trajectory[-1,:,:,:,:,0].shape)
+        # print("trajectory[:,:,:,:,0] shape ", trajectory[:,:,:,:,0].shape)
 
         if self.g_fn.K>0:
             return half_time_image[:,:,:,:,0], trajectory[-1,:,:,:,:,0], trajectory[0,:,:,:,:,0] # dimensions: [1, 3, 321, 481], [1, 3, 321, 481], ([1, 3, 321, 6])
@@ -125,14 +127,77 @@ class ImageRecEngine:
         psnr = 20 * torch.log10(255.0 / torch.sqrt(mse))
         return psnr
 
+    def compute_ssim(self, inferred_image, pos_T):
+        ssim = StructuralSimilarityIndexMeasure(data_range=255.0).to(DEVICE)
+        return ssim(inferred_image, pos_T)
+
+    # def update_fid(self, inferred_image, pos_T):
+    #     fid = FrechetInceptionDistance()
+    #     return fid.update(inferred_image, pos_T)
+
+    def bgr2ycbcr(self, img, only_y=True):
+        '''bgr version of rgb2ycbcr
+        only_y: only return Y channel
+        Input:
+            uint8, [0, 255]
+            float, [0, 1]
+        '''
+        in_img_type = img.dtype
+        print(f"Wile transferring to YCBCR colourscheme image type is {in_img_type}")
+        print(f"image dimension is {img.shape}")
+        device = img.device
+        
+        img = img.to(device=device, dtype=torch.float32)
+
+        if in_img_type != torch.uint8:
+            img *= 255.
+        # convert
+        if only_y:
+            coeffs = torch.tensor([24.966, 128.553, 65.481], device=device)
+            rlt = torch.tensordot(img, coeffs, dims=([1], [0])) / 255.0 + 16.0
+            #rlt = (img @ coeffs) / 255.0 + 16.0
+        else:            
+            # Full conversion matrix for BGR to YCbCr
+            matrix = torch.tensor([
+                [24.966, 112.0,   -18.214],
+                [128.553, -74.203, -93.786],
+                [65.481,  -37.797, 112.0]
+            ], device=device)
+            offset = torch.tensor([16, 128, 128], device=device)
+            # img shape: (..., 3), matrix: (3, 3)
+            rlt = torch.tensordot(img, matrix, dims=([1], [0])) / 255.0 + offset
+
+        # If input was uint8, round result
+        if in_img_type == torch.uint8:
+            rlt = torch.round(rlt)
+        else:
+            rlt = rlt / 255.
+
+        # Cast back to original dtype
+        rlt = rlt.to(dtype=in_img_type, device=device)
+        return rlt
+
     def generate_images(self, data):
         pos_T, pos_0 = data['GT'], data['LQ']
         pos_T = pos_T.to(DEVICE)
         pos_0 = pos_0.to(DEVICE)
-        #metrics = {}
+        metrics = {}
 
         half_time_image, inferred_image, trajectory = self.generate_image(pos_0 = pos_0)
-        psnr = self.compute_psnr(inferred_image * 255, pos_T * 255)
-        #metrics['psnr'] = psnr.item()
 
-        return half_time_image, inferred_image, psnr.item()
+        print("max value of generated image: ", torch.max(inferred_image))
+        print("min value of generated image: ", torch.min(inferred_image))
+        #assert ((torch.max(inferred_image) <= 1).all() and (torch.min(inferred_image) >= -1).all()).item(), "generated image is not normalised in [-1,1]"
+
+        psnr = self.compute_psnr(inferred_image * 255, pos_T * 255)
+
+        inferred_image_ycbcr = self.bgr2ycbcr(inferred_image * 255)
+        pos_T_ycbcr = self.bgr2ycbcr(pos_T * 255)
+        psnr_y = self.compute_psnr(inferred_image_ycbcr, pos_T_ycbcr)
+        ssim = self.compute_ssim(inferred_image_ycbcr[:,None,:,:], pos_T_ycbcr[:,None,:,:]) # Expected `preds` and `target` to have BxCxHxW or BxCxDxHxW shape. Got preds: torch.Size([1, 321, 481]) and target: torch.Size([1, 321, 481]).
+        
+        metrics['psnr'] = psnr.item()
+        metrics['psnr_y'] = psnr_y.item()
+        metrics['ssim'] = ssim.item()
+
+        return half_time_image, inferred_image, metrics #psnr.item()

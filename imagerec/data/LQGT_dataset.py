@@ -211,6 +211,14 @@ class LQGTDataset(data.Dataset):
         if LR_path is None:
             LR_path = GT_path
 
+        # print("max value of LR image: ", torch.max(img_LR))
+        # print("min value of LR image: ", torch.min(img_LR))
+        # assert ((torch.max(img_LR) <= 1).all() and (torch.min(img_LR) >= -1).all()).item(), "img_LR image is not normalised in [-1,1]"
+
+        # print("max value of GT image: ", torch.max(img_GT))
+        # print("min value of GT image: ", torch.min(img_GT))
+        # assert ((torch.max(img_GT) <= 1).all() and (torch.min(img_GT) >= -1).all()).item(), "img_GT image is not normalised in [-1,1]"
+
         #return {"LQ": img_LR, "GT": img_GT, "LQ_path": LR_path, "GT_path": GT_path}
         return {"LQ": img_LR, "GT": img_GT}
     

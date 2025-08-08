@@ -38,8 +38,6 @@ def build_data_loader(dataset_train, dataset_val, args): # , dataset_opt, opt=No
 
 
 def create_dataset(args, distortion):#, wandb=None):
-    print("args during creation of the dataset: ", args)
-    print("TYPE OF ARGS DURING CREATION: ", type(args))
     mode = args.mode
     if mode == "LQGT":  # SFTMD
         from imagerec.data.LQGT_dataset import LQGTDataset as D

@@ -58,5 +58,6 @@ wandb/*
 reproducibility/moon/model/*
 experiments/wandb/*
 *.pt
+*.sif
 logs/*
 output_logs/*
