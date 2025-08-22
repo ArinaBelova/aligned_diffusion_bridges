@@ -1,3 +1,4 @@
+phase: train
 task: imagerec
 distortion: inpaint # inpaint # experiment distortion for imagerec framework 
 #is_train: true

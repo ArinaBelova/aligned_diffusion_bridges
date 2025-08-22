@@ -20,6 +20,9 @@ def wandb_setup(args):
         run_id = wandb.util.generate_id() + f"-K-{args.K}" + f"-H-{args.H}" + f"-norm-{args.norm}" + f"-g-{args.max_diffusivity}"
     else:
         run_id = args.jobid + f"-K-{args.K}" + f"-H-{args.H}" + f"-norm-{args.norm}" + f"-g-{args.max_diffusivity}"
+
+    if args.phase == "test":
+        run_id = "TEST-" + run_id    
     
     if args.group_name is not None:
         args.run_name = args.group_name + f"-{run_id}"

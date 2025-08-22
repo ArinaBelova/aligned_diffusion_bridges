@@ -6,6 +6,11 @@ import logging
 import torch
 import torch.utils.data
 
+def build_eval_data_loader(dataset_eval, args):
+    eval_ds = torch.utils.data.DataLoader(
+        dataset_eval, batch_size=1, shuffle=False, num_workers=0, pin_memory=True) 
+
+    return eval_ds
 
 def build_data_loader(dataset_train, dataset_val, args): # , dataset_opt, opt=None, sampler=None
     # if args.dist:

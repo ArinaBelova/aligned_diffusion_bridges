@@ -1,3 +1,4 @@
+phase: train
 task: imagerec
 distortion: derain # inpaint # experiment distortion for imagerec framework 
 #is_train: true
@@ -14,32 +15,33 @@ early_stop_goal: min
 early_stop_metric: val_loss
 ema_decay_rate: 0.8
 grad_clip_value: 1.0 # maybe too large 5.0 ?
-inference_every: 1 #50 #400
-inference_goal: min
-inference_metric: val_inference_rmsd
+inference_every: 1 #400 #200 #400 #400 #50 #400
+inference_goal: max
+inference_metric: val_inference_avg_psnr_y # based on this metric we will save the best_model.pth
 inference_steps: 100
-display_on_inference: 10
+display_on_inference: 10 # as we have lots of images in test we don't want to display them all during validation
 log_dir: logs
 lr: 0.0001 #0.001
-#max diffusivity will come from cmd when we do a sweep over a range of values
-max_diffusivity: 0.25 # needs to be tuned for every use case, for proteins we used 0.25
-# H,K,norm come from the cmd and parsed in setup.py
-H: 0.1
-K: 5
-norm: true
 
-n_epochs: 1 #300 #4000 #2000 #300 #300  #300 #200 #10000
+# Those are controlled via the bash script now
+#max_diffusivity: 0.25 # needs to be tuned for every use case, for proteins we used 0.25
+# H,K,norm come from the cmd and parsed in setup.py
+#H: 0.5
+#K: 0 #5
+#norm: false #true
+
+n_epochs: 1 #4000 #2000 #4000 #300 #4000 #2000 #300 #300  #300 #200 #10000
 num_workers: 1
 optim_name: adamw
-reg_weight_T: 1.0
-reg_weight_t: 10.0
+#reg_weight_T: 1.0
+#reg_weight_t: 10.0
 run_name: fixed #CONF_TP_MODEL-gia1ordl
 scheduler: onecycle
 scheduler_mode: min
 scheduler_patience: 50
-train_bs: 2
-transform: brownian_bridge
-val_bs: 1
+#train_bs: 2
+#transform: brownian_bridge
+#val_bs: 1
 wandb_mode: online
 weight_decay: 0.01
 
@@ -71,8 +73,8 @@ datasets:
   train:
     name: Train_Dataset
     mode: LQGT
-    dataroot_GT: Rain100H/norain/ #Rain100H/norain/
-    dataroot_LQ: Rain100H/rain/ #Rain100H/rain/
+    dataroot_GT: Rain100H/norain/ #Rain100H/norain/ #Rain100H/norain/
+    dataroot_LQ: Rain100H/rain/ #Rain100H/rain/ #Rain100H/rain/
 
     use_shuffle: true
     n_workers: 1 #4  # per GPU
@@ -83,6 +85,9 @@ datasets:
     use_rot: true
     use_swap: false
     color: RGB
+    only_get_LQ: false
+    only_get_GT: false
+    common_shape: 481
   val:
     name: Val_Dataset
     mode: LQGT
@@ -90,3 +95,6 @@ datasets:
     dataroot_LQ: Rain100H/val/rain/
     GT_size: 128
     LR_size: 128
+    only_get_LQ: false
+    only_get_GT: false
+    common_shape: 481

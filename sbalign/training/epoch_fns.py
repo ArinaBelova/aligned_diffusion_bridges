@@ -9,8 +9,8 @@ from sbalign.utils.sb_utils import get_t_schedule, sample_from_brownian_bridge
 from sbalign.utils.sampling import sampling
 from sbalign.utils.definitions import DEVICE
 
-from proteins.docking.dock_engine import DockingEngine
-from proteins.conf.conf_engine import ConfEngine
+#from proteins.docking.dock_engine import DockingEngine
+#from proteins.conf.conf_engine import ConfEngine
 
 from imagerec.imagerec_engine import ImageRecEngine
 
@@ -80,6 +80,11 @@ def train_epoch_imagerec(model, loader,
        
         pos_0 = pos_0.to(DEVICE)
         pos_T = pos_T.to(DEVICE)
+
+        # print("in training pos_0 max ", torch.max(pos_0))
+        # print("in training pos_0 min ", torch.min(pos_0))
+        # print("in training pos_T max ", torch.max(pos_T))
+        # print("in training pos_T min ", torch.min(pos_T))
 
         # transform the datapoint to x_0, t, x_t, x_T here:
         t = np.random.uniform() * dif.t_max
@@ -404,41 +409,36 @@ def inference_epoch_conf(model, g, orig_dataset, inference_steps: int = 100,
 
     return traj_dict, monitor.summarize()
 
-def inference_epoch_imagerec(model, g, orig_dataset, args, inference_steps: int = 100):
-    
+def inference_epoch_imagerec(model, g, orig_dataset, args, inference_steps: int = 100, wandb=None):    
     engine = ImageRecEngine(
         model=model, g_fn=g, 
         inference_steps=inference_steps
     )
-
+    model.eval()
     #monitor = ProgressMonitor()
 
     loader = DataLoader(dataset=orig_dataset, batch_size=1, shuffle=False)
 
-    #print("orig_dataset['LQ'].shape", orig_dataset[0]['LQ'].shape)
-    # for now use pytorch convention for the images
-    #cleaned_images = torch.zeros((len(loader), 3, orig_dataset[0]['LQ'].shape[1], orig_dataset[0]['LQ'].shape[2]), device=DEVICE)
-    #cleaned_images_half_time = torch.zeros((len(loader), 3, orig_dataset[0]['LQ'].shape[1], orig_dataset[0]['LQ'].shape[2]), device=DEVICE)
-    #initial_images = torch.zeros((len(loader), 3, orig_dataset[0]['LQ'].shape[1], orig_dataset[0]['LQ'].shape[2]), device=DEVICE)
     cleaned_images = []
     cleaned_images_half_time = []
     initial_images = []
-    psnr_values = np.zeros(len(loader))
+    #psnr_values = np.zeros(len(loader))
+    metrics = {"psnr": [], "psnr_y": [], "ssim": [], 'lpips': []}
 
     for idx, data in enumerate(loader):
-        cleaned_image_half_time, cleaned_image, psnr_value = engine.generate_images(data)
+        print(f"Inferring image #{idx + 1}", flush=True)
+        cleaned_image_half_time, cleaned_image, metric = engine.generate_images(data) #, wandb) 
         #print("in inference psnr value", psnr_value)
         #monitor.add(psnr_value)
-    
-        # initial_images[idx] = data['LQ']
-        # cleaned_images_half_time[idx] = cleaned_image_half_time
-        # cleaned_images[idx] = cleaned_image
 
         initial_images.append(data['LQ'])
         cleaned_images_half_time.append(cleaned_image_half_time)
         cleaned_images.append(cleaned_image)
-        psnr_values[idx] = psnr_value
-
+        #psnr_values[idx] = metric["psnr"]
+        metrics["psnr"].append(metric["psnr"])
+        metrics["psnr_y"].append(metric["psnr_y"])
+        metrics["ssim"].append(metric["ssim"])
+        metrics["lpips"].append(metric["lpips"])
         
     # return initial_images, cleaned_images_half_time, cleaned_image, None 
-    return initial_images, cleaned_images_half_time, cleaned_images, psnr_values #monitor.summarize() # None 
+    return initial_images, cleaned_images_half_time, cleaned_images, metrics #psnr_values #monitor.summarize() # None 

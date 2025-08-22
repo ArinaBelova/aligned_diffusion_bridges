@@ -1,15 +1,16 @@
-import os
 import yaml
 import torch
 import wandb
 import numpy as np
 import copy
 import math
+from torchvision.utils import save_image as torch_save_image
+
 
 #######
 #  Hack for the server to avoid the horrible setup.py script
 import os
-os.chdir("/data/cluster/users/belova/projects/aligned_diffusion_bridges") 
+os.chdir("/data/cluster/users/belova/projects/sbalign/aligned_diffusion_bridges") 
 import sys
 sys.path.append(os.getcwd())
 
@@ -20,7 +21,7 @@ sys.path.append(os.getcwd())
 from imagerec.data import build_data_loader, create_dataset # what does this return: only train loader or both train and valid loader? -> depends on the provided datasets
 from imagerec.models import build_model_from_args
 
-from sbalign.training.epoch_fns import train_epoch_imagerec, test_epoch_imagerec, inference_epoch_imagerec # test_epoch_sbalign, inference_epoch_conf
+from sbalign.training.epoch_fns import train_epoch_imagerec, test_epoch_imagerec, inference_epoch_imagerec 
 from sbalign.training.losses import loss_fn_from_args
 from sbalign.training.updaters import get_optimizer, get_scheduler, get_ema
 from sbalign.utils.sb_utils import get_diffusivity_schedule
@@ -36,7 +37,7 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
     best_val_inference_value = math.inf if args.inference_goal == 'min' else 0
     best_epoch = 0
     best_val_inference_epoch = 0
-    
+    print("scheduler total steps ", scheduler.total_steps)
 
     print(f"On training start: g_max={args.max_diffusivity}, K={args.K}, H={args.H}, norm={args.norm}")
     g = get_diffusivity_schedule(args.diffusivity_schedule, args.max_diffusivity, H=args.H, K=args.K, norm=args.norm)
@@ -89,116 +90,104 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
         logs.update({'val_' + k: v for k, v in val_losses.items()})
         print(print_msg, flush=True)  
 
-        # Inference on validation set and PSNR statistics for validation set
-        print(f"Started inference on validation set epoch {epoch + 1}", flush=True)
-        if args.inference_every > 0 and (epoch + 1) % args.inference_every == 0:
-            initial_images, cleaned_images_half_time, cleaned_images, psnr_values = inference_epoch_imagerec(model=model, 
-                                                                                                            g=g,
-                                                                                                            orig_dataset=val_loader.dataset,
-                                                                                                            args=args,
-                                                                                                            inference_steps=args.inference_steps)
-            
-            # Log images to wandb - grouped by image progression
-            #for i, (initial_img, half_time_img, cleaned_img) in enumerate(zip(initial_images, cleaned_images_half_time, cleaned_images)):
-            for i in range(args.display_on_inference):
-                # Create a list of images showing the progression for this specific image
-               
-                image_progression = [
-                    wandb.Image(initial_images[i], caption="Initial (Corrupted)"),
-                    wandb.Image(cleaned_images_half_time[i], caption="Half-time Denoising"), 
-                    wandb.Image(cleaned_images[i], caption=f"Final Clean (PSNR: {psnr_values[i]})" if psnr_values is not None else "Final Clean")
-                ]
-                
-                # Log each image progression as a separate wandb entry
-                wandb.log({
-                    f"epoch_{epoch+1}_image_{i+1}_progression": image_progression
-                })
-            
-            # Optional: Also log a summary table for the epoch
-            # epoch_summary = []
-            # for i in range(len(initial_images)):
-            #     epoch_summary.extend([
-            #         wandb.Image(initial_images[i], caption=f"Image {i+1}: Initial"),
-            #         wandb.Image(cleaned_images_half_time[i], caption=f"Image {i+1}: Half-time"),
-            #         wandb.Image(cleaned_images[i], caption=f"Image {i+1}: Final")
-            #     ])
-            
-            # wandb.log({
-            #     f"epoch_{epoch+1}_all_progressions": epoch_summary
-            # })
-                                                                                                            
-            # # Log images to wandb
-            # images_to_log = []
-            # #for i, (cleaned_image, psnr_value) in enumerate(zip(cleaned_images, psnr_values)):
-            # for i, cleaned_image in enumerate(cleaned_images):
-            #     images_to_log.append(wandb.Image(
-            #         cleaned_image, 
-            #         #caption=f"PSNR: {psnr_value:.2f}"
-            #     ))
-            # wandb.log({
-            #     f"val_images_epoch_{epoch+1}": images_to_log
-            # })
-
-            if log_dir is not None:
-                os.makedirs(os.path.join(log_dir, "val_images_inference"), exist_ok=True)
-                for i, (cleaned_image, psnr_value) in enumerate(zip(cleaned_images, psnr_values)):
-                    for i, cleaned_image in enumerate(cleaned_images):
-                        image_path = os.path.join(log_dir, "val_images_inference", f"epoch_{epoch+1}_image_{i+1}.png")
-                        
-                        # Convert tensor to PIL Image and save
-                        from torchvision.utils import save_image as torch_save_image
-                        torch_save_image(cleaned_image, image_path)
-                # return this when psnr stops being None    
-                avg_psnr = np.mean(psnr_values)
-                logs.update({'val_inference_avg_psnr': avg_psnr})
-                print(f"Epoch {epoch+1}: Validation Inference Average PSNR: {avg_psnr}", flush=True)
-        #print("Finished inference on validation set", flush=True)
-
-        #     traj_dict, inference_metrics = inference_epoch_conf(
-        #                                     model=model, g=g, 
-        #                                     orig_dataset=val_loader.dataset,
-        #                                     num_inference_proteins=args.num_inference_proteins,
-        #                                     inference_steps=args.inference_steps,
-        #                                     samples_per_protein=args.samples_per_protein
-        #                                 )
-            
-        #     print_msg = f"Epoch {epoch+1}: Inference "
-        #     for item, value in inference_metrics.items():
-        #         print_msg += f"{item}: {np.round(value, 4)} "                    
-        #     print(print_msg, flush=True)
-        #     logs.update({'val_inference_' + k: v for k, v in inference_metrics.items()})
-        # print(flush=True)
 
         if ema_weights is not None:
             ema_state_dict = copy.deepcopy(model.state_dict() if DEVICE == 'cuda' else model.state_dict())
             ema_weights.restore(model.parameters())
 
         model_dict = model.state_dict()
+        
+        # Inference on validation set and PSNR statistics for validation set
+        print(f"Started inference on validation set epoch {epoch + 1}", flush=True)
+        if args.inference_every > 0 and (epoch + 1) % args.inference_every == 0:
+            #model.eval()
+            initial_images, cleaned_images_half_time, cleaned_images, metrics = inference_epoch_imagerec(model=model, 
+                                                                                                        g=g,
+                                                                                                        orig_dataset=val_loader.dataset,
+                                                                                                        args=args,
+                                                                                                        inference_steps=args.inference_steps)
+            
+            # Log images to wandb - grouped by image progression and epoch
+            for i in range(args.display_on_inference):               
+                psnr = metrics["psnr"][i]
+                psnr_y = metrics["psnr_y"][i]
+                ssim = metrics["ssim"][i]
+                lpips = metrics["lpips"][i]
 
-        # if args.inference_every > 0:
-        #     if args.inference_metric in logs.keys() and \
-        #             (args.inference_goal == 'min' and logs[args.inference_metric] < best_val_inference_value or
-        #             args.inference_goal == 'max' and logs[args.inference_metric] > best_val_inference_value):
-        #         best_val_inference_value = logs[args.inference_metric]
-        #         best_val_inference_epoch = epoch
+                image_progression = [
+                    wandb.Image(initial_images[i], caption="Initial (Corrupted)"),
+                    wandb.Image(cleaned_images_half_time[i], caption="Half-time Denoising"), 
+                    wandb.Image(cleaned_images[i], caption=f"Final Clean (PSNR: {psnr}), PSNR_Y: {psnr_y}, SSIM: {ssim}, LPIPS: {lpips}" 
+                    if (psnr is not None and psnr_y is not None and ssim is not None and lpips is not None) else "Final Clean")
+                ]
+                
+                # Log each image progression as a separate wandb entry
+                wandb.log({
+                    f"epoch_{epoch+1}_image_{i+1}_progression": image_progression
+                })
 
-        #         if log_dir is not None:
-        #             model_file = os.path.join(log_dir, 'best_inference_epoch_model.pt')
-        #             print(f"After best inference, saving model to {model_file}", flush=True)
-        #             torch.save(model_dict, model_file)
+            if log_dir is not None:
+                os.makedirs(os.path.join(log_dir, "val_images_inference"), exist_ok=True)  
 
-        #             if ema_weights is not None:
-        #                 ema_file = os.path.join(log_dir, 'best_ema_inference_epoch_model.pt')
-        #                 print(f"After best inference, saving ema to {ema_file}", flush=True)
-        #                 torch.save(ema_state_dict, ema_file)
-                    
-        #             print(f"After best inference, saving trajectories to {log_dir}/trajectories", flush=True)
-        #             os.makedirs(os.path.join(log_dir, "trajectories"), exist_ok=True)
-        #             for complex_id in traj_dict:
-        #                 trajectory = traj_dict[complex_id]
-        #                 traj_file = f"{log_dir}/trajectories/{complex_id}.npy"
-        #                 np.save(traj_file, trajectory)
-        #             print(flush=True)
+            concatenated_tensor = cleaned_images[0].clone()
+            shapes_to_save = concatenated_tensor.shape
+
+            for i, cleaned_image in enumerate(cleaned_images):
+                base_path = os.path.join(log_dir, "val_images_inference", f"epoch_{epoch+1}", f"image_{i+1}")
+                os.makedirs(os.path.dirname(base_path), exist_ok=True)
+                # Convert tensor to PIL Image and save
+                torch_save_image(cleaned_image, base_path + ".png")
+
+                # Save tensor for the future evaluation
+                if i > 0:
+                    if cleaned_image.shape != shapes_to_save:
+                        cleaned_image = cleaned_image.permute(0,1,3,2)            
+                    concatenated_tensor = torch.cat((concatenated_tensor, cleaned_image), dim=0)
+
+            torch.save(concatenated_tensor, os.path.join(log_dir, "val_images_inference", f"epoch_{epoch+1}", "images.pt"))           
+                
+            # Log the average metrics for all images in this evaluation
+            avg_psnr = np.mean(metrics["psnr"])
+            avg_psnr_y = np.mean(metrics["psnr_y"])
+            avg_ssim = np.mean(metrics["ssim"])
+            avg_lpips = np.mean(metrics["lpips"])
+
+            if args.wandb_mode == "online":
+                log_dict["avg_psnr"] = avg_psnr
+                log_dict["avg_psnr_y"] = avg_psnr_y
+                log_dict["avg_ssim"] = avg_ssim
+                log_dict["avg_lpips"] = avg_lpips
+
+                wandb.log(log_dict)
+
+            logs.update({'val_inference_avg_psnr': avg_psnr})
+            logs.update({'val_inference_avg_psnr_y': avg_psnr_y})
+            logs.update({'val_inference_avg_ssim': avg_ssim})
+            logs.update({'val_inference_avg_lpips': avg_ssim})
+
+            print(f"Epoch {epoch+1}: Validation Inference Average PSNR: {avg_psnr}", flush=True)
+            print(f"Epoch {epoch+1}: Validation Inference Average PSNR_Y: {avg_psnr_y}", flush=True)
+            print(f"Epoch {epoch+1}: Validation Inference Average SSIM: {avg_ssim}", flush=True)
+            print(f"Epoch {epoch+1}: Validation Inference Average LPIPS: {avg_lpips}", flush=True)
+
+            #model.train()
+
+            # save the best model based on the inference metric if we improved after this epoch:
+            if args.inference_metric in logs.keys() and \
+                    (args.inference_goal == 'min' and logs[args.inference_metric] < best_val_inference_value or
+                    args.inference_goal == 'max' and logs[args.inference_metric] > best_val_inference_value):
+                best_val_inference_value = logs[args.inference_metric]
+                best_val_inference_epoch = epoch + 1
+
+                if log_dir is not None:
+                    model_file = os.path.join(log_dir, f'best_inference_epoch_{epoch + 1}_model.pt')
+                    print(f"After best inference, saving model to {model_file}", flush=True)
+                    torch.save(model_dict, model_file)
+
+                    if ema_weights is not None:
+                        ema_file = os.path.join(log_dir, f'best_ema_inference_epoch_{epoch + 1}_model.pt')
+                        print(f"After best inference, saving ema to {ema_file}", flush=True)
+                        torch.save(ema_state_dict, ema_file)    
 
         # Write logs to wandb
         if args.wandb_mode == "online":
@@ -211,18 +200,17 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
             log_dict["step"] = epoch + 1
             wandb.log(log_dict)
 
-        if log_dir is not None:
-            model_file = os.path.join(log_dir, "best_model.pt")
-            print(f"After best validation, saving model to {model_file}", flush=True)
-            torch.save(model_dict, os.path.join(log_dir, 'best_model.pt'))
+        # TODO: this does not make sense why do we save after every epoch a new "best" model?
+        # if log_dir is not None:
+        #     model_file = os.path.join(log_dir, "best_model.pt")
+        #     print(f"After best validation, saving model to {model_file}", flush=True)
+        #     torch.save(model_dict, os.path.join(log_dir, 'best_model.pt'))
 
-            if ema_weights is not None:
-                ema_file = os.path.join(log_dir, "best_ema_model.pt")
-                print(f"After best validation, saving ema to {ema_file}", flush=True)
-                torch.save(ema_state_dict, os.path.join(log_dir, 'best_ema_model.pt'))
-            print(flush=True)
-
-        print("scheduler total steps ", scheduler.total_steps)
+        #     if ema_weights is not None:
+        #         ema_file = os.path.join(log_dir, "best_ema_model.pt")
+        #         print(f"After best validation, saving ema to {ema_file}", flush=True)
+        #         torch.save(ema_state_dict, os.path.join(log_dir, 'best_ema_model.pt'))
+        #     print(flush=True)
 
         #if scheduler is not None:
             # if args.early_stop_metric in logs:
@@ -244,7 +232,7 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
             torch.save(save_dict, os.path.join(log_dir, 'last_model.pt'))
             print(flush=True)
 
-    print(f"Best Validation Loss {best_val_loss} on Epoch {best_epoch}", flush=True)
+    #print(f"Best Validation Loss {best_val_loss} on Epoch {best_epoch}", flush=True)
     print(f"Best Inference Metric {best_val_inference_value} on Epoch {best_val_inference_epoch}", flush=True)
 
 
@@ -261,6 +249,7 @@ def main(cmd_args=None):
     args = update_args_from_config(args=args)
     print('args after concatenating the config args set: ', args, flush=True)
 
+    # parsing specific arguments to imagerec config:
     from options import parse, dict_to_nonedict
 
     args = parse(args, is_train=True)

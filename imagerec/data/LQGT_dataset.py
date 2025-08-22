@@ -26,7 +26,7 @@ class LQGTDataset(data.Dataset):
         super().__init__()
         self.LR_paths, self.GT_paths = None, None
         self.LR_env, self.GT_env = None, None  # environment for lmdb
-        self.LR_size, self.GT_size = args.LR_size, args.GT_size
+        #self.LR_size, self.GT_size = args.LR_size, args.GT_size
         self.args = args
         self.distortion = distortion
         #self.wandb = wandb
@@ -210,16 +210,29 @@ class LQGTDataset(data.Dataset):
 
         if LR_path is None:
             LR_path = GT_path
-
-        # print("max value of LR image: ", torch.max(img_LR))
-        # print("min value of LR image: ", torch.min(img_LR))
+        
+        # Here images are torch.float32 format
+        # print("LR image dtype ", img_LR.dtype)
+        # print("max value of LR image: ", torch.max(img_LR),flush=True)
+        # print("min value of LR image: ", torch.min(img_LR),flush=True)
         # assert ((torch.max(img_LR) <= 1).all() and (torch.min(img_LR) >= -1).all()).item(), "img_LR image is not normalised in [-1,1]"
-
-        # print("max value of GT image: ", torch.max(img_GT))
-        # print("min value of GT image: ", torch.min(img_GT))
+        # print("GT image dtype ", img_GT.dtype)
+        # print("max value of GT image: ", torch.max(img_GT),flush=True)
+        # print("min value of GT image: ", torch.min(img_GT),flush=True)
         # assert ((torch.max(img_GT) <= 1).all() and (torch.min(img_GT) >= -1).all()).item(), "img_GT image is not normalised in [-1,1]"
 
         #return {"LQ": img_LR, "GT": img_GT, "LQ_path": LR_path, "GT_path": GT_path}
+        if self.args.only_get_LQ:
+            if (self.distortion == "derain") and (self.args.common_shape != img_LR.shape[1]):
+                return torch.permute(img_LR, (0, 2, 1))
+            else:
+                return img_LR
+        elif self.args.only_get_GT:
+            if (self.distortion == "derain") and (self.args.common_shape != img_GT.shape[1]) :
+                return torch.permute(img_GT, (0, 2, 1))
+            else:
+                return img_GT
+        
         return {"LQ": img_LR, "GT": img_GT}
     
     def __len__(self):
