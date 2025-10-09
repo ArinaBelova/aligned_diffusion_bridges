@@ -1,10 +1,10 @@
 phase: test
-distortion: derain
+distortion: inpaint
 wandb_mode: online
 run_name: fixed
 #jobid: TEST_ # for wandb
 log_dir: logs
-display_on_inference: 10
+display_on_inference: 50
 # Those are controlled via the bash script now
 # K: 0
 # H: 0.5
@@ -39,14 +39,14 @@ datasets:
   eval:
     name: Eval_Dataset
     mode: LQGT
-    dataroot_GT: Rain100H/test/norain/ #Rain100H/norain/ #Rain100H/norain/
-    dataroot_LQ: Rain100H/test/rain/ #Rain100H/rain/ #Rain100H/rain/
+    dataroot_GT: celebahq256_imgs/valid/ #train
+    dataroot_LQ: celebahq256_imgs/masks/thin
     # we don;t use this transformation in eval, just need it for compatability
-    GT_size: 128
-    LR_size: 128
+    GT_size: ~
+    LR_size: ~
     only_get_LQ: false
     only_get_GT: false
-    common_shape: 481
+    common_shape: 256
   #   use_shuffle: true
   #   n_workers: 1 #4  # per GPU
   #   batch_size: 8

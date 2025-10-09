@@ -4,6 +4,7 @@ import pickle
 import random
 
 import cv2
+from PIL import Image
 import numpy as np
 import torch
 
@@ -98,6 +99,7 @@ def augment(img, hflip=True, rot=True, mode=None, swap=None):
         if vflip:
             img = img[::-1, :, :]
         if rot90:
+            #print(f"WHile rotating the image on 90 degrees: {img.shape}")
             img = img.transpose(1, 0, 2)
         return img
     if mode in ['LQ','GT', 'SRker']:
@@ -453,13 +455,13 @@ def generate_fixed_mask(mask_type='center_square', size=(256, 256), mask_size_ra
     
     return mask
 
-def mask_to_fixed(cv2_image, mask_type='center_square', mask_size_ratio=0.2):#, wandb=None):
+def mask_to_fixed(cv2_image, mask_path, mask_size_ratio=0.2):#, wandb=None):
     """
     Apply a fixed generated mask to tensor (modified version of your original function).
     
     Args:
         cv2_image: Input cv2 image (numpy array) with shape (H, W, 3)
-        mask_type: Type of mask to generate
+        mask: mask to apply
         mask_size_ratio: Size ratio of the mask
     
     Returns:
@@ -467,13 +469,19 @@ def mask_to_fixed(cv2_image, mask_type='center_square', mask_size_ratio=0.2):#, 
     """
 
     h, w = cv2_image.shape[:2]
+    
     # Generate mask
-    mask = generate_fixed_mask(mask_type, (h, w), mask_size_ratio)
+    #mask = generate_fixed_mask(mask_type, (h, w), mask_size_ratio)
 
     # Normalize cv2 image to 0-1 range
     #image_normalized = cv2_image.astype(np.float32) / 255.0
     # Apply mask (1 = keep original, 0 = set to 1.0 for inpainting)
-    masked_image = mask * cv2_image + (1.0 - mask)
+    # read the mask image:
+    mask = Image.open(mask_path).convert('L')
+    mask = np.array(mask) > 0.5
+    masked_image = cv2_image * mask[:,:,None] + (1.0 - mask[:,:,None])
+    #print(f"masked image shape is {masked_image.shape}")
+    #masked_image = mask * cv2_image + (1.0 - mask)
     # Convert back to cv2 format (0-255)
     #masked_image = (masked_image * 255).astype(np.uint8)
     
@@ -495,6 +503,7 @@ def mask_to_fixed(cv2_image, mask_type='center_square', mask_size_ratio=0.2):#, 
     #     pass  # Skip logging if wandb not installed
     # except Exception as e:
     #     print(f"Warning: Could not log inpainting visualization to wandb: {str(e)}")
+
     return masked_image
 
 

@@ -48,7 +48,7 @@ class LQGTDataset(data.Dataset):
         else:
             print("Error: data_type is not matched in Dataset")
         assert self.GT_paths, "Error: GT paths are empty."
-        if self.LR_paths and self.GT_paths:
+        if self.LR_paths and self.GT_paths and self.distortion != "inpaint":
             assert len(self.LR_paths) == len(
                 self.GT_paths
             ), "GT and LR datasets have different number of images - {}, {}.".format(
@@ -99,7 +99,7 @@ class LQGTDataset(data.Dataset):
             img_GT = util.modcrop(img_GT, scale)
 
         # get LR image
-        if self.LR_paths:  # LR exist
+        if self.LR_paths and self.distortion != "inpaint":  # LR exist
             LR_path = self.LR_paths[index]
             if self.args.data_type == "lmdb":
                 resolution = [int(s) for s in self.LR_sizes[index].split("_")]
@@ -107,7 +107,7 @@ class LQGTDataset(data.Dataset):
                 resolution = None
             img_LR = util.read_img(self.LR_env, LR_path, resolution)
         # geenrate a LR image for inpainting:    
-        elif self.distortion == "inpaint":
+        elif self.LR_paths and self.distortion == "inpaint":
             # # Log original image to wandb
             # if self.wandb and self.wandb.run is not None:
             #     # Convert BGR to RGB for visualization
@@ -120,7 +120,9 @@ class LQGTDataset(data.Dataset):
             #             caption="Original Image Before Inpainting"
             #         )
             #     })
-            img_LR = util.mask_to_fixed(img_GT) #, wandb=self.wandb) # not normalised image yet
+            mask_idx = random.randint(0, len(self.LR_paths) - 1)
+            mask_path = self.LR_paths[mask_idx]
+            img_LR = util.mask_to_fixed(img_GT, mask_path) #, wandb=self.wandb) # not normalised image yet
         else:  # down-sampling on-the-fly
             # randomly scale during training
             if self.args.phase == "train":
@@ -189,6 +191,7 @@ class LQGTDataset(data.Dataset):
         # change color space if necessary
         #if self.args.color:
         if getattr(self.args, 'color', False):
+            #print(f"shape of LR image is: {img_LR.shape}")
             H, W, C = img_LR.shape
             img_LR = util.channel_convert(C, self.args.color, [img_LR])[
                 0
@@ -227,7 +230,8 @@ class LQGTDataset(data.Dataset):
                 return torch.permute(img_LR, (0, 2, 1))
             else:
                 return img_LR
-        elif self.args.only_get_GT:
+                
+        if self.args.only_get_GT:
             if (self.distortion == "derain") and (self.args.common_shape != img_GT.shape[1]) :
                 return torch.permute(img_GT, (0, 2, 1))
             else:

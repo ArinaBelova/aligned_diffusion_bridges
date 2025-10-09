@@ -88,9 +88,7 @@ class ConditionalUNet(nn.Module):
         x = F.pad(x, (0, mod_pad_w, 0, mod_pad_h), 'reflect')
         return x
 
-    # want to simply have (self, data) signature
-    # TODO: change dataloader
-    def forward(self, pos_0, pos_t, timepoint): # # TODO: pos_0, pos_t instead of data
+    def forward(self, pos_0, pos_t, timepoint): 
 
         #if isinstance(timepoint, int) or isinstance(timepoint, float): # don't need this for now as timepoint is guaranteed to be a tensor
         timepoint = torch.tensor([timepoint]).to(pos_t.device)
@@ -140,6 +138,7 @@ class ConditionalUNet(nn.Module):
 
         x = x[..., :H, :W]
         
+        torch.cuda.empty_cache()
         return x
 
 

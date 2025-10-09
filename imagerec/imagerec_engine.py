@@ -11,8 +11,12 @@ from sbalign.utils.definitions import DEVICE
 from sbalign.utils.ops import to_numpy
 
 from torchmetrics.image import StructuralSimilarityIndexMeasure
-from torchmetrics.image.fid import FrechetInceptionDistance
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
+
+from imagerec.models.vae_inference import decode
+from imagerec.models.vae_training import DEFAULT_MODEL_DEF
+from diffusers.models import AutoencoderKL
+
 
 class ImageRecEngine:
     def __init__(self,
@@ -50,7 +54,7 @@ class ImageRecEngine:
             pos = pos_orig.clone().to(DEVICE)
 
         # generate the image
-        trajectory = []
+        #trajectory = []
 
         with torch.no_grad():
             for t_idx in range(self.inference_steps):
@@ -73,7 +77,8 @@ class ImageRecEngine:
                     pos_t = self.g_fn.input_transform(x,Y,t,T,self.g_fn.omega.to(DEVICE), self.g_fn.gamma.to(DEVICE),self.g_fn.g_max.to(DEVICE))
                     # print('for K>0 - data.t:',data.t.dtype,flush=True)
                     # print('for K>0 - data.pos_t:',data.pos_t.dtype,flush=True)
-                    drift_pos_x = self.model(pos_0, pos_t, t)
+                    with torch.inference_mode():
+                        drift_pos_x = self.model(pos_0, pos_t, t)
 
                     drift_pos = self.g_fn.score(drift_pos_x.to(DEVICE),t,T,self.g_fn.omega.to(DEVICE), self.g_fn.gamma.to(DEVICE),self.g_fn.g_max.to(DEVICE))
                     dpos = (matrix_vector_mp(F, pos) + matrix_vector_mp(GG, drift_pos))*self.dt + G * dw
@@ -89,7 +94,7 @@ class ImageRecEngine:
                     # print("G * dw ", (G * dw).shape)
                     
                     pos = pos + dpos
-                    trajectory.append(pos)
+                    #trajectory.append(pos)
                 else:
                     g_t = self.g_fn.g(t).to(DEVICE)
                     std = torch.sqrt(((self.g_fn.g(t)**2)*(1-t)))
@@ -104,7 +109,7 @@ class ImageRecEngine:
                     pos_t = pos_t + dpos
 
                     #print(f"max pos_t value is {torch.max(pos_t)} and min pos_t value is {torch.min(pos_t)}")
-                    trajectory.append(pos_t)
+                    #trajectory.append(pos_t)
 
                 if t_idx == self.inference_steps // 2:
                     if self.g_fn.K > 0:
@@ -112,25 +117,52 @@ class ImageRecEngine:
                     else:                        
                         half_time_image = pos_t   
 
-        trajectory = torch.stack(trajectory, dim=0)
+        #trajectory = torch.stack(trajectory, dim=0)
 
         # print("half_time_image shape ", half_time_image.shape)
         # print("half_time_image[:,:,:,:,0] shape ", half_time_image[:,:,:,:,0].shape)
         # print("trajectory[-1,:,:,:,:,0] shape ", trajectory[-1,:,:,:,:,0].shape)
         # print("trajectory[:,:,:,:,0] shape ", trajectory[:,:,:,:,0].shape)
 
-        if self.g_fn.K>0:
-            return half_time_image[:,:,:,:,0], trajectory[-1,:,:,:,:,0], trajectory[0,:,:,:,:,0] # dimensions: [1, 3, 321, 481], [1, 3, 321, 481], ([1, 3, 321, 6])
-        else:
-            return half_time_image, trajectory[-1], trajectory
+        torch.cuda.empty_cache()
+        
+        # if self.g_fn.K>0:
+        #     return half_time_image[:,:,:,:,0], trajectory[-1,:,:,:,:,0]#, trajectory[0,:,:,:,:,0] # dimensions: [1, 3, 321, 481], [1, 3, 321, 481], ([1, 3, 321, 6])
+        # else:
+        #     return half_time_image, trajectory[-1]#, trajectory
 
-    def generate_images(self, data): #, wandb):
+        if self.g_fn.K > 0:
+            return half_time_image[:,:,:,:,0], pos[:,:,:,:,0]
+        else:
+            return half_time_image, pos_t
+
+    def generate_images(self, data, original_dataset=None, args=None): #, wandb):
         pos_T, pos_0 = data['GT'], data['LQ']
         pos_T = pos_T.to(DEVICE)
         pos_0 = pos_0.to(DEVICE)
         metrics = {}
 
-        half_time_image, inferred_image, trajectory = self.generate_image(pos_0 = pos_0)
+        #half_time_image, inferred_image, trajectory = self.generate_image(pos_0 = pos_0)
+        half_time_image, inferred_image = self.generate_image(pos_0 = pos_0)
+
+        # for the latent diffusion case
+        if args is not None and hasattr(args, "latent") and args.latent:
+            # Need to decode the image here!!! 
+            # def decode(
+            #     vae: AutoencoderKL,
+            #     latents: torch.Tensor,
+            #     device: torch.device = torch.device('cpu')
+            vae = AutoencoderKL(**DEFAULT_MODEL_DEF)
+            vae.load_state_dict(torch.load(args.vae_checkpoint_path, map_location=DEVICE)['model'])
+
+            half_time_image = original_dataset.postprocess(half_time_image)
+            inferred_image = original_dataset.postprocess(inferred_image)
+            pos_T = original_dataset.postprocess(pos_T)
+
+            half_time_image = decode(vae, half_time_image, device=DEVICE)
+            inferred_image = decode(vae, inferred_image, device=DEVICE)
+            pos_T = decode(vae, pos_T, device=DEVICE)
+            
 
         # To have a sliding sclae of the images generated during the diffusion process
         # for i in range(len(trajectory)):
@@ -171,6 +203,7 @@ class ImageRecEngine:
 
         psnr_y = compute_psnr(inferred_image_ycbcr * 255, pos_T_ycbcr * 255)
         ssim = compute_ssim(inferred_image_ycbcr[:,None,:,:], pos_T_ycbcr[:,None,:,:]) # Expected `preds` and `target` to have BxCxHxW or BxCxDxHxW shape. Got preds: torch.Size([1, 321, 481]) and target: torch.Size([1, 321, 481]).
+                
         lpips = compute_lpips(inferred_image_clone, pos_T_clone)
 
         metrics['psnr'] = psnr.item()
@@ -178,7 +211,7 @@ class ImageRecEngine:
         metrics['ssim'] = ssim.item()
         metrics['lpips'] = lpips.item()
         
-        return half_time_image, inferred_image, metrics #psnr.item()
+        return pos_0, half_time_image, inferred_image, metrics #psnr.item()
 
 def compute_psnr(inferred_image, pos_T):
         mse = torch.mean((inferred_image - pos_T) ** 2)
@@ -190,10 +223,6 @@ def compute_psnr(inferred_image, pos_T):
 def compute_ssim(inferred_image, pos_T):
     ssim = StructuralSimilarityIndexMeasure(data_range=None).to(DEVICE) # determine data range from the data itself, was 255.0 before
     return ssim(inferred_image, pos_T)
-
-# def update_fid(self, inferred_image, pos_T):
-#     fid = FrechetInceptionDistance()
-#     return fid.update(inferred_image, pos_T)
 
 def bgr2ycbcr(img, only_y=True):
     '''bgr version of rgb2ycbcr

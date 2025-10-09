@@ -1,3 +1,4 @@
+latent: true
 phase: train
 task: imagerec
 distortion: derain # inpaint # experiment distortion for imagerec framework 
@@ -6,7 +7,6 @@ distortion: derain # inpaint # experiment distortion for imagerec framework
 data_dir: sbalign/data
 dist: false # distributed training
 gpu_ids: 0
-launcher: ~
 
 diffusivity_schedule: fbb 
 #distance_embed_dim: 32
@@ -16,7 +16,7 @@ early_stop_goal: min
 early_stop_metric: val_loss
 ema_decay_rate: 0.8
 grad_clip_value: 1.0 # maybe too large 5.0 ?
-inference_every: 1 #200 #400 #200 #400 #400 #50 #400
+inference_every: 400 #400 #50 #400
 inference_goal: max
 inference_metric: val_inference_avg_psnr_y # based on this metric we will save the best_model.pth
 inference_steps: 100
@@ -31,9 +31,8 @@ lr: 0.0001 #0.001
 #K: 0 #5
 #norm: false #true
 
-n_epochs: 1 #2000 #4000 #2000 #4000 #300 #4000 #2000 #300 #300  #300 #200 #10000
-random_save_every_num_epochs: 1 #400 # 5 models in the big training
-num_workers: 4
+n_epochs: 4000 #4000 #300 #4000 #2000 #300 #300  #300 #200 #10000
+num_workers: 1
 optim_name: adamw
 #reg_weight_T: 1.0
 #reg_weight_t: 10.0
@@ -51,8 +50,8 @@ weight_decay: 0.01
 network_G:
   which_model_G: ConditionalUNet
   setting:
-    in_nc: 3
-    out_nc: 3
+    in_nc: 16
+    out_nc: 16
     nf: 64
     depth: 4
 
@@ -71,49 +70,19 @@ path:
   strict_load: true
   resume_state: ~
 
-## for pixel-space diffusion training:
+vae_checkpoint_path: /data/cluster/users/belova/projects/sbalign/aligned_diffusion_bridges/imagerec/models/ckpt_step_50000.pt
+
+## for latent diffusion training:
 datasets:
   train:
     name: Train_Dataset
-    mode: LQGT
-    dataroot_GT: Rain100H/norain/ #Rain100H/norain/ #Rain100H/norain/
-    dataroot_LQ: Rain100H/rain/X2 #Rain100H/rain/ #Rain100H/rain/
-
-    use_shuffle: true
-    n_workers: 1 #4  # per GPU
-    dataset_size: 1800
+    mode: latent_LQGT
+    n_workers: 1
+    path_to_latents_lq: /data/cluster/users/belova/projects/sbalign/aligned_diffusion_bridges/Rain100H/latents/train/latents_rain.pt
+    path_to_latents_gt: /data/cluster/users/belova/projects/sbalign/aligned_diffusion_bridges/Rain100H/latents/train/latents_norain.pt
     batch_size: 8
-    GT_size: 128
-    LR_size: 128
-    use_flip: true
-    use_rot: true
-    use_swap: false
-    color: RGB
-    only_get_LQ: false
-    only_get_GT: false
-    common_shape: 481
   val:
     name: Val_Dataset
-    mode: LQGT
-    dataroot_GT: Rain100H/val/norain/
-    dataroot_LQ: Rain100H/val/rain/
-    GT_size: 128
-    LR_size: 128
-    only_get_LQ: false
-    only_get_GT: false
-    common_shape: 481
-
-# ## for latent diffusion training:
-# datasets:
-#   train:
-#     name: Train_Dataset
-#     mode: latent_LQGT
-#     n_workers: 1
-#     path_to_latents_lq: /data/cluster/users/belova/projects/sbalign/aligned_diffusion_bridges/Rain100H/latents/train/latents_rain.pt
-#     path_to_latents_gt: /data/cluster/users/belova/projects/sbalign/aligned_diffusion_bridges/Rain100H/latents/train/latents_norain.pt
-#     batch_size: 8
-#   val:
-#     name: Val_Dataset
-#     mode: latent_LQGT
-#     path_to_latents_lq: /data/cluster/users/belova/projects/sbalign/aligned_diffusion_bridges/Rain100H/latents/val/latents_rain.pt
-#     path_to_latents_gt: /data/cluster/users/belova/projects/sbalign/aligned_diffusion_bridges/Rain100H/latents/val/latents_norain.pt
+    mode: latent_LQGT
+    path_to_latents_lq: /data/cluster/users/belova/projects/sbalign/aligned_diffusion_bridges/Rain100H/latents/val/latents_rain.pt
+    path_to_latents_gt: /data/cluster/users/belova/projects/sbalign/aligned_diffusion_bridges/Rain100H/latents/val/latents_norain.pt

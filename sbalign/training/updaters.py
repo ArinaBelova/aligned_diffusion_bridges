@@ -103,13 +103,22 @@ def get_optimizer(model, optim_name: str = 'adamw', lr: float = 0.001, weight_de
 
 def get_scheduler(optimizer, args, scheduler_name: str = 'plateau', scheduler_mode: str = 'min', 
                   factor: float = 0.5, patience: int = 10, min_lr=0):
+    
+    scheduler = None              
+    
     if scheduler_name == 'plateau':
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, 
                                                          mode=scheduler_mode, factor=factor,
                                                          patience=patience, min_lr=min_lr)
     elif scheduler_name == 'onecycle':
         scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer, max_lr=1e-4, 
-                                                  total_steps=args.n_epochs * int(1800/args.datasets["train"]["batch_size"]))
+                                                   total_steps=args.n_epochs * int(args.datasets["train"]["dataset_size"]/args.datasets["train"]["batch_size"]))
+        # if args.datasets["train"]["dataroot_GT"] == "celebahq256_imgs/train/":
+        #     scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer, max_lr=1e-4, 
+        #                                           total_steps=args.n_epochs * int(27000/args.datasets["train"]["batch_size"]))
+        # elif args.datasets["train"]["dataroot_GT"] == "Rain100H/norain/":                                             
+        #     scheduler = optim.lr_scheduler.OneCycleLR(optimizer=optimizer, max_lr=1e-4, 
+        #                                             total_steps=args.n_epochs * int(1800/args.datasets["train"]["batch_size"]))
     else:
         raise ValueError(f"Scheduler of type {scheduler_name} is not supported.")
 

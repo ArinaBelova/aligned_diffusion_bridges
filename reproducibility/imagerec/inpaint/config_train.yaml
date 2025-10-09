@@ -3,9 +3,10 @@ task: imagerec
 distortion: inpaint # inpaint # experiment distortion for imagerec framework 
 #is_train: true
 
-#data_dir: sbalign/data
-dist: false # distributed training
-gpu_ids: 0
+#for the distributed training:
+launcher: pytorch # ~ for 1 GPU training
+dist: true # distributed training
+gpu_ids: [0, 1, 2, 3]
 
 diffusivity_schedule: fbb 
 #distance_embed_dim: 32
@@ -15,21 +16,22 @@ early_stop_goal: min
 early_stop_metric: val_loss
 ema_decay_rate: 0.8
 grad_clip_value: 1.0 # maybe too large 5.0 ?
-inference_every: 50 #50 #100
+inference_every: 200 # 50 #50 #100
 inference_goal: min
 inference_metric: val_inference_rmsd
 inference_steps: 100
-display_on_inference: 10
+random_save_every_num_epochs: 400
+display_on_inference: 10 #10
 log_dir: logs
 lr: 0.0001 #0.001
 #max diffusivity will come from cmd when we do a sweep over a range of values
-max_diffusivity: 0.25 # needs to be tuned for every use case, for proteins we used 0.25
+# max_diffusivity: 0.25 # needs to be tuned for every use case, for proteins we used 0.25
 # H,K,norm come from the cmd and parsed in setup.py
 # H: 0.1
 # K: 2
 # norm: false
-n_epochs: 300  #1000 #2000 #300 #300  #300 #200 #10000
-num_workers: 1
+n_epochs: 2000 #300  #1000 #2000 #300 #300  #300 #200 #10000
+num_workers: 4
 optim_name: adamw
 reg_weight_T: 1.0
 reg_weight_t: 10.0
@@ -71,12 +73,15 @@ datasets:
   train:
     name: Train_Dataset
     mode: LQGT
-    dataroot_GT: celebahq256_imgs/train/ #Rain100H/norain/
-    dataroot_LQ: ~
-
+    dataroot_GT: celebahq256_imgs/train/ #train
+    dataroot_LQ: celebahq256_imgs/masks/thin
+    only_get_LQ: false
+    only_get_GT: false
+    #mask_type: circle #stripes now we provide the masks via the dataroot_LQ
     use_shuffle: true
-    n_workers: 1 #4  # per GPU
-    batch_size: 8 #8
+    n_workers: 4  # per GPU
+    dataset_size: 27000
+    batch_size: 32 #8
     GT_size: ~ #128
     LR_size: ~ #128
     use_flip: true
@@ -86,7 +91,10 @@ datasets:
   val:
     name: Val_Dataset
     mode: LQGT
-    dataroot_GT: celebahq256_imgs/valid/
-    dataroot_LQ: ~
+    dataroot_GT: celebahq256_imgs/test/
+    dataroot_LQ: celebahq256_imgs/masks/thin
+    only_get_LQ: false
+    only_get_GT: false
+    #mask_type: "stripes"
     GT_size: ~ #128
     LR_size: ~ #128

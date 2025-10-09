@@ -9,12 +9,14 @@ from sbalign.utils.sb_utils import get_t_schedule, sample_from_brownian_bridge
 from sbalign.utils.sampling import sampling
 from sbalign.utils.definitions import DEVICE
 
+# some imports fail == is important for docking case
 #from proteins.docking.dock_engine import DockingEngine
 #from proteins.conf.conf_engine import ConfEngine
 
 from imagerec.imagerec_engine import ImageRecEngine
 
 from sbalign.training.diffusivity import get_diffusivity_schedule, fractional_data_transform
+from torchmetrics.image.fid import FrechetInceptionDistance
 
 class ProgressMonitor:
 
@@ -52,10 +54,10 @@ def train_epoch_imagerec(model, loader,
     monitor = ProgressMonitor()
 
     for _, data in enumerate(loader):
-        # # #########################################
-        # # # Log a sample training image to wandb
-        # #if wandb is not None and wandb.run is not None:
-        # # Take first image from batch for visualization
+        # # # #########################################
+        # # # # Log a sample training image to wandb
+        # # #if wandb is not None and wandb.run is not None:
+        # # # Take first image from batch for visualization
         # sample_lq = data["LQ"][0].cpu()  # Shape: [C,H,W]
         # sample_gt = data["GT"][0].cpu()
         
@@ -105,7 +107,6 @@ def train_epoch_imagerec(model, loader,
             Y = z[:,:,:,:,1:]
             pos_t = dif.input_transform(x,Y,t,dif.T,dif.omega, dif.gamma,dif.g_max)
             cond_var_t = dif.cond_var(t,dif.T,dif.omega,dif.gamma,dif.g_max)
-            # cond_var_t = cond_var_t.to(DEVICE)
         else:
             #t = t * torch.ones(data.num_nodes) #t
             pos_t = sample_from_brownian_bridge(g=dif.g, t=t, x_0=pos_0, x_T=pos_T, t_min=0.0, t_max=1.0)
@@ -119,7 +120,7 @@ def train_epoch_imagerec(model, loader,
                                       pos_t=pos_t,
                                       pos_T=pos_T,
                                       cond_var_t=cond_var_t)                              
-                                    
+
             monitor.add(loss_dict)
 
             loss.backward()
@@ -409,36 +410,82 @@ def inference_epoch_conf(model, g, orig_dataset, inference_steps: int = 100,
 
     return traj_dict, monitor.summarize()
 
-def inference_epoch_imagerec(model, g, orig_dataset, args, inference_steps: int = 100, wandb=None):    
+def prepare_image_for_fid(image):
+    assert torch.is_tensor(image)
+
+    image = image.float()
+    #image = (image - torch.min(image)) / (torch.max(image) - torch.min(image))
+    image = torch.clamp(image, min=0.0, max=1.0)
+    assert torch.min(image) >= 0 and torch.max(image) <= 1
+
+    #image = (image * 255).to(torch.uint8) #TODO: vhevk that!!
+    image = image.cpu()
+
+    #assert image.dtype == torch.uint8
+    return image
+
+def inference_epoch_imagerec(model, g, orig_dataset, args, inference_steps: int = 100, wandb=None, train_dataloader=None):    
+    model.eval()
+    
     engine = ImageRecEngine(
         model=model, g_fn=g, 
         inference_steps=inference_steps
     )
-    model.eval()
+    
     #monitor = ProgressMonitor()
 
     loader = DataLoader(dataset=orig_dataset, batch_size=1, shuffle=False)
+
+    fid = FrechetInceptionDistance(normalize=True)
 
     cleaned_images = []
     cleaned_images_half_time = []
     initial_images = []
     #psnr_values = np.zeros(len(loader))
-    metrics = {"psnr": [], "psnr_y": [], "ssim": [], 'lpips': []}
+    metrics = {"psnr": [], "psnr_y": [], "ssim": [], 'lpips': [], "fid": []}
+
+    
+    if train_dataloader:
+        for idx, data in enumerate(train_dataloader):
+            fid.update(prepare_image_for_fid(data["GT"]), real=True)
+
 
     for idx, data in enumerate(loader):
         print(f"Inferring image #{idx + 1}", flush=True)
-        cleaned_image_half_time, cleaned_image, metric = engine.generate_images(data) #, wandb) 
-        #print("in inference psnr value", psnr_value)
-        #monitor.add(psnr_value)
 
-        initial_images.append(data['LQ'])
+        #torch.cuda.memory._record_memory_history()
+        if hasattr(args, "latent") and args.latent:
+            initial_image, cleaned_image_half_time, cleaned_image, metric = engine.generate_images(data, orig_dataset, args) #, wandb) 
+        else:
+            initial_image, cleaned_image_half_time, cleaned_image, metric = engine.generate_images(data) #, wandb)     
+        #torch.cuda.memory._dump_snapshot(f"memory_snapshots/my_snapshot_{idx}.pickle")
+
+        fid.update(prepare_image_for_fid(data["GT"]), real=True)
+        fid.update(prepare_image_for_fid(cleaned_image), real=False)
+
+        # TEST!!!!!!!!!!!!!!!!!!!!
+        # initial_image = prepare_image_for_fid(initial_image)
+        # cleaned_image_half_time = prepare_image_for_fid(cleaned_image_half_time)
+        # cleaned_image = prepare_image_for_fid(cleaned_image)
+
+
+        initial_images.append(initial_image)
         cleaned_images_half_time.append(cleaned_image_half_time)
         cleaned_images.append(cleaned_image)
-        #psnr_values[idx] = metric["psnr"]
+
+        # to free up CUDA memory:
+        del initial_image
+        del cleaned_image_half_time
+        del cleaned_image
+        torch.cuda.empty_cache()
+
         metrics["psnr"].append(metric["psnr"])
         metrics["psnr_y"].append(metric["psnr_y"])
         metrics["ssim"].append(metric["ssim"])
         metrics["lpips"].append(metric["lpips"])
+        
+    # only 1 FID for the whole datset    
+    metrics["fid"].append(fid.compute().item())    
         
     # return initial_images, cleaned_images_half_time, cleaned_image, None 
     return initial_images, cleaned_images_half_time, cleaned_images, metrics #psnr_values #monitor.summarize() # None 

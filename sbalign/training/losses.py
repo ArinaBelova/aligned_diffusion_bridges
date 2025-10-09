@@ -207,7 +207,7 @@ def loss_function_imagerec(
 
     assert torch.max(t_diff)>0, "Can not have zero variance"
 
-    bb_drift_true = (x_diff) / t_diff # / torch.sqrt(t_diff) # was t_diff
+    bb_drift_true = x_diff / t_diff # / torch.sqrt(t_diff) # was t_diff
     #bb_drift_true = x_diff / torch.sqrt(t_diff)
     #print("bb_drift_true ", bb_drift_true)
     bb_drift_pred = drift_x_pred 

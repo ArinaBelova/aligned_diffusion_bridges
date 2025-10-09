@@ -22,6 +22,7 @@ from imagerec.data import build_data_loader, create_dataset # what does this ret
 from imagerec.models import build_model_from_args
 
 from sbalign.training.epoch_fns import train_epoch_imagerec, test_epoch_imagerec, inference_epoch_imagerec 
+from sbalign.training.dist_utils import dist_setup
 from sbalign.training.losses import loss_fn_from_args
 from sbalign.training.updaters import get_optimizer, get_scheduler, get_ema
 from sbalign.utils.sb_utils import get_diffusivity_schedule
@@ -32,7 +33,7 @@ from sbalign.utils.definitions import DEVICE
 from types import SimpleNamespace
 
 
-def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weights=None, log_dir=None):
+def train(args, train_loader, train_sampler, val_loader, model, optimizer, scheduler, ema_weights=None, log_dir=None):
     best_val_loss = math.inf
     best_val_inference_value = math.inf if args.inference_goal == 'min' else 0
     best_epoch = 0
@@ -52,6 +53,9 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
             args.inference_steps = 10
         print(f"Epoch #{epoch + 1}")
         log_dict = {}
+
+        if train_sampler is not None:
+            train_sampler.set_epoch(epoch)
 
         train_losses = train_epoch_imagerec(
                 model=model, loader=train_loader, 
@@ -98,15 +102,16 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
         model_dict = model.state_dict()
         
         # Inference on validation set and PSNR statistics for validation set
-        print(f"Started inference on validation set epoch {epoch + 1}", flush=True)
+        # TODO: there were (epoch + 1) % args.inference_every -> possibly not to save non-trained model at the epoch 0
         if args.inference_every > 0 and (epoch + 1) % args.inference_every == 0:
             #model.eval()
             initial_images, cleaned_images_half_time, cleaned_images, metrics = inference_epoch_imagerec(model=model, 
                                                                                                         g=g,
                                                                                                         orig_dataset=val_loader.dataset,
                                                                                                         args=args,
-                                                                                                        inference_steps=args.inference_steps)
-            
+                                                                                                        inference_steps=args.inference_steps,
+                                                                                                        train_dataloader=train_loader)
+
             # Log images to wandb - grouped by image progression and epoch
             for i in range(args.display_on_inference):               
                 psnr = metrics["psnr"][i]
@@ -115,9 +120,9 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
                 lpips = metrics["lpips"][i]
 
                 image_progression = [
-                    wandb.Image(initial_images[i], caption="Initial (Corrupted)"),
-                    wandb.Image(cleaned_images_half_time[i], caption="Half-time Denoising"), 
-                    wandb.Image(cleaned_images[i], caption=f"Final Clean (PSNR: {psnr}), PSNR_Y: {psnr_y}, SSIM: {ssim}, LPIPS: {lpips}" 
+                    wandb.Image(initial_images[i].squeeze(0) * 255, caption="Initial (Corrupted)"),
+                    wandb.Image(cleaned_images_half_time[i].squeeze(0) * 255, caption="Half-time Denoising"), 
+                    wandb.Image(cleaned_images[i].squeeze(0) * 255, caption=f"Final Clean (PSNR: {psnr}), PSNR_Y: {psnr_y}, SSIM: {ssim}, LPIPS: {lpips}" 
                     if (psnr is not None and psnr_y is not None and ssim is not None and lpips is not None) else "Final Clean")
                 ]
                 
@@ -151,12 +156,14 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
             avg_psnr_y = np.mean(metrics["psnr_y"])
             avg_ssim = np.mean(metrics["ssim"])
             avg_lpips = np.mean(metrics["lpips"])
+            fid = metrics["fid"][0]
 
             if args.wandb_mode == "online":
                 log_dict["avg_psnr"] = avg_psnr
                 log_dict["avg_psnr_y"] = avg_psnr_y
                 log_dict["avg_ssim"] = avg_ssim
                 log_dict["avg_lpips"] = avg_lpips
+                log_dict["fid_overall"] = fid
 
                 wandb.log(log_dict)
 
@@ -164,11 +171,14 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
             logs.update({'val_inference_avg_psnr_y': avg_psnr_y})
             logs.update({'val_inference_avg_ssim': avg_ssim})
             logs.update({'val_inference_avg_lpips': avg_ssim})
+            logs.update({'val_inference_fid': fid})
+
 
             print(f"Epoch {epoch+1}: Validation Inference Average PSNR: {avg_psnr}", flush=True)
             print(f"Epoch {epoch+1}: Validation Inference Average PSNR_Y: {avg_psnr_y}", flush=True)
             print(f"Epoch {epoch+1}: Validation Inference Average SSIM: {avg_ssim}", flush=True)
             print(f"Epoch {epoch+1}: Validation Inference Average LPIPS: {avg_lpips}", flush=True)
+            print(f"Epoch {epoch+1}: Validation Inference FID: {fid}", flush=True)
 
             #model.train()
 
@@ -180,14 +190,20 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
                 best_val_inference_epoch = epoch + 1
 
                 if log_dir is not None:
-                    model_file = os.path.join(log_dir, f'best_inference_epoch_{epoch + 1}_model.pt')
-                    print(f"After best inference, saving model to {model_file}", flush=True)
+                    model_file = os.path.join(log_dir, f'best_model.pt')
+                    print(f"After best inference, at epoch {epoch + 1} saving model to {model_file}", flush=True)
                     torch.save(model_dict, model_file)
 
                     if ema_weights is not None:
                         ema_file = os.path.join(log_dir, f'best_ema_inference_epoch_{epoch + 1}_model.pt')
                         print(f"After best inference, saving ema to {ema_file}", flush=True)
                         torch.save(ema_state_dict, ema_file)    
+
+        # We also would like to save 5 random models to validate them on the bigger partition of the data:
+        if epoch % args.random_save_every_num_epochs == 0:
+            model_file = os.path.join(log_dir, f'epoch_{epoch}_model.pt') # there was _best_model.pt maybe will return for compatability
+            print(f"We save a model at epoch {epoch + 1} to {model_file} to further validate them.", flush=True)
+            torch.save(model_dict, model_file)
 
         # Write logs to wandb
         if args.wandb_mode == "online":
@@ -218,22 +234,22 @@ def train(args, train_loader, val_loader, model, optimizer, scheduler, ema_weigh
             # else:
             #     scheduler.step(logs["val_loss"])
 
-        if log_dir is not None:
-            print(f"Saving last model to {log_dir}/last_model.pt", flush=True)
-            save_dict = {
-                'epoch': epoch,
-                'model': model_dict,
-                'optimizer': optimizer.state_dict(),
-            }
+    if log_dir is not None:
+        print(f"Saving last model to {log_dir}/last_model.pt", flush=True)
+        save_dict = {
+            'epoch': epoch,
+            'model': model_dict,
+            'optimizer': optimizer.state_dict(),
+        }
 
-            if ema_weights is not None:
-                save_dict['ema_weights'] = ema_weights.state_dict()
+        if ema_weights is not None:
+            save_dict['ema_weights'] = ema_weights.state_dict()
 
-            torch.save(save_dict, os.path.join(log_dir, 'last_model.pt'))
-            print(flush=True)
+        torch.save(save_dict, os.path.join(log_dir, 'last_model.pt'))
+        print(flush=True)
 
     #print(f"Best Validation Loss {best_val_loss} on Epoch {best_epoch}", flush=True)
-    print(f"Best Inference Metric {best_val_inference_value} on Epoch {best_val_inference_epoch}", flush=True)
+    print(f"Best Inference Metric {best_val_inference_value} on Epoch {best_val_inference_epoch}, the best model is saved at this epoch", flush=True)
 
 
 def main(cmd_args=None):
@@ -260,6 +276,16 @@ def main(cmd_args=None):
     wandb_setup(args)
     args.wandb_dir = os.path.dirname(wandb.run.dir)
 
+    # initialise the distributed training
+    if args.launcher and args.dist:
+        dist_setup()
+        args.world_size = torch.distributed.get_world_size()
+        print(f"Training in distributed mode with {args.world_size} processes", flush=True)
+    else:
+        args.world_size = 1
+        print("Training with a single process", flush=True)
+    print(flush=True)
+
     print(f"Args: {args}", flush=True)
     print(flush=True)
 
@@ -270,10 +296,16 @@ def main(cmd_args=None):
     #print("Training dataset arguments: ", args.datasets.train)
     dataset_train = create_dataset(SimpleNamespace(**args.datasets["train"]), distortion=args.distortion)#, wandb=wandb)
     dataset_val = create_dataset(SimpleNamespace(**args.datasets["val"]), distortion=args.distortion)#, wandb=wandb)
-    train_loader, val_loader = build_data_loader(dataset_train, dataset_val, args) 
+
+    if args.dist:
+        sampler = data.DistributedSampler(dataset_train, seed=42)
+    else:
+        sampler = None
+
+    train_loader, val_loader = build_data_loader(dataset_train, dataset_val, args, sampler=sampler) 
 
     # Model
-    model = build_model_from_args(args.network_G) #build_model_from_args(SimpleNamespace(**args["network_G"]))
+    model = build_model_from_args(args.network_G) 
 
     n_params = count_parameters(model=model, log_to_wandb=False and args.online)
     print(f"Model with {n_params / (10**6)}M parameters", flush=True)
@@ -306,7 +338,7 @@ def main(cmd_args=None):
         log_dir = None
 
     print(f"Training model for {args.n_epochs} epochs...", flush=True)
-    train(args=args, train_loader=train_loader, 
+    train(args=args, train_loader=train_loader, train_sampler=sampler,
           val_loader=val_loader, model=model, optimizer=optimizer,
           scheduler=scheduler, ema_weights=ema, log_dir=log_dir)
 
